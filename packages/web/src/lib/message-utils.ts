@@ -153,3 +153,85 @@ export function getSummaryText(message: UnifiedTranscriptMessage): string {
 
   return "Unknown message";
 }
+
+/**
+ * Represents an image reference with sha256 hash
+ */
+export interface ImageReference {
+  sha256: string;
+  mediaType: string;
+}
+
+/**
+ * Check if a value is an image reference with sha256
+ */
+function isImageReference(
+  value: unknown,
+): value is { type: "image"; source: { type: "sha256"; sha256: string; mediaType: string } } {
+  if (!isObject(value)) return false;
+  if (value.type !== "image") return false;
+  if (!isObject(value.source)) return false;
+  const source = value.source;
+  return source.type === "sha256" && typeof source.sha256 === "string" && typeof source.mediaType === "string";
+}
+
+/**
+ * Recursively extract all image references from a value
+ */
+export function extractImageReferences(value: unknown): ImageReference[] {
+  const images: ImageReference[] = [];
+
+  function traverse(v: unknown): void {
+    if (v === null || v === undefined) return;
+
+    if (isImageReference(v)) {
+      images.push({
+        sha256: v.source.sha256,
+        mediaType: v.source.mediaType,
+      });
+      return;
+    }
+
+    if (Array.isArray(v)) {
+      for (const item of v) {
+        traverse(item);
+      }
+      return;
+    }
+
+    if (isObject(v)) {
+      for (const key of Object.keys(v)) {
+        traverse(v[key]);
+      }
+    }
+  }
+
+  traverse(value);
+  return images;
+}
+
+/**
+ * Replace image references in JSON with placeholder text for display
+ * Returns a new object with image references replaced
+ */
+export function replaceImageReferencesForDisplay(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+
+  if (isImageReference(value)) {
+    return `[Image: ${value.source.sha256.slice(0, 8)}...]`;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => replaceImageReferencesForDisplay(item));
+  }
+
+  if (isObject(value)) {
+    const result: Record<string, unknown> = {};
+    for (const key of Object.keys(value)) {
+      result[key] = replaceImageReferencesForDisplay(value[key]);
+    }
+    return result;
+  }
+
+  return value;
+}

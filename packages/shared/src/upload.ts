@@ -37,6 +37,18 @@ export async function uploadTranscript(
     filename,
   );
 
+  // Add blobs as separate form fields with "blob:" prefix
+  if (payload.blobs) {
+    for (const blob of payload.blobs) {
+      // Convert Uint8Array to ArrayBuffer for Blob compatibility
+      const arrayBuffer = blob.data.buffer.slice(
+        blob.data.byteOffset,
+        blob.data.byteOffset + blob.data.byteLength,
+      ) as ArrayBuffer;
+      formData.append(`blob:${blob.sha256}`, new Blob([arrayBuffer], { type: blob.mediaType }), `${blob.sha256}.blob`);
+    }
+  }
+
   try {
     const response = await fetch(`${serverUrl}/api/ingest`, {
       method: "POST",

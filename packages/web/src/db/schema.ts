@@ -180,6 +180,46 @@ export const commitTracking = sqliteTable("commit_tracking", {
 });
 
 // =============================================================================
+// Blob Storage Tables (content-addressed deduplication)
+// =============================================================================
+
+/**
+ * Global blob storage - content-addressed by SHA256
+ * Each unique blob (image/screenshot) is stored once
+ */
+export const blobs = sqliteTable("blobs", {
+  sha256: text("sha256").primaryKey(),
+  mediaType: text("media_type").notNull(),
+  size: integer("size").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+/**
+ * Junction table linking transcripts to blobs
+ * Enables access control - user can access blob if they own a transcript that references it
+ */
+export const transcriptBlobs = sqliteTable(
+  "transcript_blobs",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    transcriptId: text("transcript_id")
+      .notNull()
+      .references(() => transcripts.id, { onDelete: "cascade" }),
+    sha256: text("sha256")
+      .notNull()
+      .references(() => blobs.sha256, { onDelete: "cascade" }),
+  },
+  (table) => ({
+    transcriptBlobUnique: uniqueIndex("idx_transcript_blob_unique").on(table.transcriptId, table.sha256),
+    sha256Idx: index("idx_transcript_blobs_sha256").on(table.sha256),
+  }),
+);
+
+// =============================================================================
 // Relations (for Drizzle queries with joins)
 // =============================================================================
 
@@ -209,7 +249,7 @@ export const reposRelations = relations(repos, ({ many }) => ({
   transcripts: many(transcripts),
 }));
 
-export const transcriptsRelations = relations(transcripts, ({ one }) => ({
+export const transcriptsRelations = relations(transcripts, ({ one, many }) => ({
   user: one(user, {
     fields: [transcripts.userId],
     references: [user.id],
@@ -217,5 +257,22 @@ export const transcriptsRelations = relations(transcripts, ({ one }) => ({
   repo: one(repos, {
     fields: [transcripts.repoId],
     references: [repos.id],
+  }),
+  transcriptBlobs: many(transcriptBlobs),
+}));
+
+// Blob relations
+export const blobsRelations = relations(blobs, ({ many }) => ({
+  transcriptBlobs: many(transcriptBlobs),
+}));
+
+export const transcriptBlobsRelations = relations(transcriptBlobs, ({ one }) => ({
+  transcript: one(transcripts, {
+    fields: [transcriptBlobs.transcriptId],
+    references: [transcripts.id],
+  }),
+  blob: one(blobs, {
+    fields: [transcriptBlobs.sha256],
+    references: [blobs.sha256],
   }),
 }));

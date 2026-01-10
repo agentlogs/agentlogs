@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { existsSync, readFileSync } from "fs";
 import { dirname, isAbsolute, resolve } from "path";
-import type { TranscriptSource, UploadPayload } from "@vibeinsights/shared";
+import type { TranscriptSource, UploadBlob, UploadPayload } from "@vibeinsights/shared";
 import { convertClaudeCodeTranscript, type UnifiedTranscript } from "@vibeinsights/shared/claudecode";
 import { convertCodexTranscript } from "@vibeinsights/shared/codex";
 import { LiteLLMPricingFetcher } from "@vibeinsights/shared/pricing";
@@ -92,7 +92,7 @@ export async function performUpload(
     throw new Error(`Unable to convert ${source} transcript to unified format.`);
   }
 
-  const { transcript: unifiedTranscript } = conversionResult;
+  const { transcript: unifiedTranscript, blobs: transcriptBlobs } = conversionResult;
 
   const finalSessionId = sessionId ?? unifiedTranscript.id;
   if (!finalSessionId) {
@@ -108,10 +108,21 @@ export async function performUpload(
   const eventCount = records.length;
   const sha256 = createHash("sha256").update(rawContent).digest("hex");
 
+  // Convert Map<sha256, TranscriptBlob> to UploadBlob[]
+  const uploadBlobs: UploadBlob[] = [];
+  for (const [blobSha256, blob] of transcriptBlobs) {
+    uploadBlobs.push({
+      sha256: blobSha256,
+      data: new Uint8Array(blob.data),
+      mediaType: blob.mediaType,
+    });
+  }
+
   const payload: UploadPayload = {
     sha256,
     rawTranscript: rawContent,
     unifiedTranscript,
+    blobs: uploadBlobs.length > 0 ? uploadBlobs : undefined,
   };
 
   const result = await uploadTranscript(payload, options);

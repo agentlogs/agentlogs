@@ -8,7 +8,12 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import type { UnifiedTranscriptMessage } from "@vibeinsights/shared/claudecode";
 import { unifiedTranscriptSchema } from "@vibeinsights/shared/schemas";
 import { useEffect, useState } from "react";
-import { getToolSummary } from "../lib/message-utils";
+import {
+  extractImageReferences,
+  getToolSummary,
+  replaceImageReferencesForDisplay,
+  type ImageReference,
+} from "../lib/message-utils";
 import { getTranscript } from "../lib/server-functions";
 
 export const Route = createFileRoute("/transcripts/$id")({
@@ -102,10 +107,39 @@ function TranscriptDetailComponent() {
   );
 }
 
+function ImageGallery({ images }: { images: ImageReference[] }) {
+  if (images.length === 0) return null;
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {images.map((img) => (
+        <a
+          key={img.sha256}
+          href={`/api/blobs/${img.sha256}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block"
+        >
+          <img
+            src={`/api/blobs/${img.sha256}`}
+            alt={`Image ${img.sha256.slice(0, 8)}`}
+            className="max-h-64 max-w-full rounded border border-border object-contain hover:border-primary"
+            loading="lazy"
+          />
+        </a>
+      ))}
+    </div>
+  );
+}
+
 function MessageCard({ message, index }: { message: UnifiedTranscriptMessage; index: number }) {
   const [copied, setCopied] = useState(false);
   const shouldCollapse = message.type === "tool-call" || message.type === "thinking";
   const messageId = `msg-${index + 1}`;
+
+  // Extract images from tool call input/output
+  const inputImages = message.type === "tool-call" ? extractImageReferences(message.input) : [];
+  const outputImages = message.type === "tool-call" ? extractImageReferences(message.output) : [];
 
   const getTypeColor = () => {
     if (message.type === "user") {
@@ -243,16 +277,18 @@ function MessageCard({ message, index }: { message: UnifiedTranscriptMessage; in
                   <div className="mb-2">
                     <div className="mb-1 text-xs font-semibold text-muted-foreground">Input:</div>
                     <pre className="overflow-x-auto rounded border bg-background/50 p-3 text-xs whitespace-pre-wrap">
-                      {JSON.stringify(message.input, null, 2)}
+                      {JSON.stringify(replaceImageReferencesForDisplay(message.input), null, 2)}
                     </pre>
+                    <ImageGallery images={inputImages} />
                   </div>
                 )}
                 {message.output && (
                   <div>
                     <div className="mb-1 text-xs font-semibold text-muted-foreground">Output:</div>
                     <pre className="overflow-x-auto rounded border bg-background/50 p-3 text-xs whitespace-pre-wrap">
-                      {JSON.stringify(message.output, null, 2)}
+                      {JSON.stringify(replaceImageReferencesForDisplay(message.output), null, 2)}
                     </pre>
+                    <ImageGallery images={outputImages} />
                   </div>
                 )}
                 {message.error && (

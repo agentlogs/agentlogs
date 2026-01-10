@@ -5,7 +5,7 @@ import type { TranscriptSource } from "@vibeinsights/shared";
 import { unifiedTranscriptSchema } from "@vibeinsights/shared/schemas";
 import { env } from "cloudflare:workers";
 import { and, eq } from "drizzle-orm";
-import { repos, transcripts } from "../../db/schema";
+import { blobs, repos, transcriptBlobs, transcripts } from "../../db/schema";
 import { createAuth } from "../../lib/auth";
 import { logger } from "../../lib/logger";
 
@@ -211,7 +211,7 @@ export const Route = createFileRoute("/api/ingest")({
         };
 
         // Insert or update transcript
-        await db
+        const insertedTranscript = await db
           .insert(transcripts)
           .values({
             repoId: repoDbId,
@@ -228,12 +228,80 @@ export const Route = createFileRoute("/api/ingest")({
               repoId: repoDbId,
               ...metadata,
             },
-          });
+          })
+          .returning({ id: transcripts.id });
+
+        const transcriptDbId = insertedTranscript[0].id;
 
         // Upload to R2
         const r2Bucket = env.BUCKET;
         // For private transcripts (no repo), use "private/<userId>" as prefix
         const r2KeyPrefix = repoId ? `${repoId}/${transcriptId}` : `private/${userId}/${transcriptId}`;
+
+        // Extract and process blobs from form data
+        const blobEntries = [...formData.entries()]
+          .filter(([key, value]) => key.startsWith("blob:") && typeof value !== "string")
+          .map(([key, value]) => ({
+            sha256: key.slice(5), // Remove "blob:" prefix
+            blob: value as unknown as File,
+          }));
+
+        if (blobEntries.length > 0) {
+          logger.debug("Processing blobs", {
+            userId,
+            transcriptId,
+            blobCount: blobEntries.length,
+          });
+
+          for (const { sha256: blobSha256, blob } of blobEntries) {
+            // Upload blob to R2 if it doesn't exist (content-addressed deduplication)
+            const r2Key = `blobs/${blobSha256}`;
+            const existingBlob = await r2Bucket.head(r2Key);
+
+            if (!existingBlob) {
+              const blobData = await blob.arrayBuffer();
+              await r2Bucket.put(r2Key, blobData, {
+                httpMetadata: {
+                  contentType: blob.type || "application/octet-stream",
+                },
+              });
+              logger.debug("Uploaded blob to R2", {
+                key: r2Key,
+                size: blobData.byteLength,
+                mediaType: blob.type,
+              });
+            } else {
+              logger.debug("Blob already exists in R2, skipping upload", {
+                key: r2Key,
+              });
+            }
+
+            // Record blob metadata in database (upsert)
+            await db
+              .insert(blobs)
+              .values({
+                sha256: blobSha256,
+                mediaType: blob.type || "application/octet-stream",
+                size: blob.size,
+              })
+              .onConflictDoNothing();
+
+            // Link blob to transcript
+            await db
+              .insert(transcriptBlobs)
+              .values({
+                transcriptId: transcriptDbId,
+                sha256: blobSha256,
+              })
+              .onConflictDoNothing();
+          }
+
+          logger.info("Processed blobs for transcript", {
+            userId,
+            transcriptId,
+            blobCount: blobEntries.length,
+          });
+        }
 
         // Upload unified transcript as JSON
         const unifiedJson = JSON.stringify(unifiedTranscript);
