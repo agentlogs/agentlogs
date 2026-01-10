@@ -1,0 +1,48 @@
+{
+  "session": {
+    "id": "oc-session-images-001",
+    "parentSessionId": null,
+    "title": "Image analysis session",
+    "messageCount": 2,
+    "promptTokens": 2000,
+    "completionTokens": 400,
+    "cost": 0.024,
+    "createdAt": "2025-01-10T15:00:00.000Z",
+    "updatedAt": "2025-01-10T15:01:00.000Z"
+  },
+  "messages": [
+    {
+      "id": "msg-001",
+      "sessionId": "oc-session-images-001",
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "What's in this screenshot?"
+        },
+        {
+          "type": "file",
+          "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+          "mime": "image/png"
+        }
+      ],
+      "model": null,
+      "createdAt": "2025-01-10T15:00:00.000Z",
+      "finishedAt": null
+    },
+    {
+      "id": "msg-002",
+      "sessionId": "oc-session-images-001",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "The screenshot shows a terminal window with some code output. It appears to be running tests with all of them passing."
+        }
+      ],
+      "model": "claude-sonnet-4-20250514",
+      "createdAt": "2025-01-10T15:00:10.000Z",
+      "finishedAt": "2025-01-10T15:00:20.000Z"
+    }
+  ]
+}

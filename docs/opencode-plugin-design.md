@@ -282,12 +282,12 @@ export const vibeInsightsPlugin: Plugin = async (ctx) => {
     // Intercept tool execution for git commit enhancement
     tool: {
       execute: {
-        after: async (args, result) => {
+        before: async (args) => {
           if (args.name === "shell" && isGitCommit(args.input)) {
             // Modify commit message to include transcript link
-            await appendTranscriptLink(ctx, currentSessionId);
+            return modifyCommitArgs(args, currentSessionId);
           }
-          return result;
+          return args;
         },
       },
     },
@@ -427,7 +427,7 @@ export type TranscriptSource = "claude-code" | "codex" | "opencode" | "unknown";
 | **Data Source** | Parse JSONL file | SDK API calls |
 | **Transcript File** | `~/.claude/projects/*/transcripts/*.jsonl` | None (in-memory from API) |
 | **Hook Trigger** | stdin JSON with hook_event_name | Event callback in plugin |
-| **Git Commit Hook** | PreToolUse + modify tool_input | tool.execute.after + shell command |
+| **Git Commit Hook** | PreToolUse + modify tool_input | tool.execute.before + modify args |
 | **Session End** | SessionEnd event | session.idle event |
 | **Runtime** | Any (called via shell) | Bun/Node.js |
 
@@ -478,7 +478,7 @@ describe("convertOpenCodeTranscript", () => {
 - [ ] Create package with Bun config
 - [ ] Implement plugin entry point
 - [ ] Handle `session.idle` for upload
-- [ ] Handle `tool.execute.after` for git commits
+- [ ] Handle `tool.execute.before` for git commits
 - [ ] Extract git context at runtime
 - [ ] Add authentication handling
 - [ ] Add error handling and logging
@@ -508,7 +508,7 @@ describe("convertOpenCodeTranscript", () => {
 
 5. **Real-time Upload**: Should we upload partial transcripts on each message, or only on session.idle?
 
-6. **Commit Message Format**: What's the best way to modify git commit messages via `tool.execute.after`?
+6. **Commit Message Format**: What's the best way to modify git commit messages via `tool.execute.before`?
 
 ---
 

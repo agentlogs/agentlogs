@@ -1,0 +1,56 @@
+{
+  "session": {
+    "id": "oc-session-error-001",
+    "parentSessionId": null,
+    "title": "Session with tool error",
+    "messageCount": 2,
+    "promptTokens": 200,
+    "completionTokens": 150,
+    "cost": 0.0035,
+    "createdAt": "2025-01-10T17:00:00.000Z",
+    "updatedAt": "2025-01-10T17:01:00.000Z"
+  },
+  "messages": [
+    {
+      "id": "msg-001",
+      "sessionId": "oc-session-error-001",
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "Read the config file at /etc/secret/config.yaml"
+        }
+      ],
+      "model": null,
+      "createdAt": "2025-01-10T17:00:00.000Z",
+      "finishedAt": null
+    },
+    {
+      "id": "msg-002",
+      "sessionId": "oc-session-error-001",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "tool",
+          "id": "tool-001",
+          "name": "read_file",
+          "state": {
+            "input": {
+              "file_path": "/etc/secret/config.yaml"
+            },
+            "output": null,
+            "error": "EACCES: permission denied, open '/etc/secret/config.yaml'",
+            "status": "error"
+          }
+        },
+        {
+          "type": "text",
+          "text": "I'm unable to read that file due to a permission error. The file exists but I don't have the necessary permissions to access it."
+        }
+      ],
+      "model": "claude-sonnet-4-20250514",
+      "createdAt": "2025-01-10T17:00:05.000Z",
+      "finishedAt": "2025-01-10T17:00:15.000Z"
+    }
+  ]
+}

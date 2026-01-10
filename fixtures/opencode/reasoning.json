@@ -1,0 +1,47 @@
+{
+  "session": {
+    "id": "oc-session-reasoning-001",
+    "parentSessionId": null,
+    "title": "Problem solving with reasoning",
+    "messageCount": 2,
+    "promptTokens": 300,
+    "completionTokens": 600,
+    "cost": 0.009,
+    "createdAt": "2025-01-10T16:00:00.000Z",
+    "updatedAt": "2025-01-10T16:02:00.000Z"
+  },
+  "messages": [
+    {
+      "id": "msg-001",
+      "sessionId": "oc-session-reasoning-001",
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "How should I refactor this function to be more maintainable?"
+        }
+      ],
+      "model": null,
+      "createdAt": "2025-01-10T16:00:00.000Z",
+      "finishedAt": null
+    },
+    {
+      "id": "msg-002",
+      "sessionId": "oc-session-reasoning-001",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "reasoning",
+          "text": "Let me analyze the function structure. The main issues I see are: 1) Too many responsibilities in a single function, 2) Deep nesting that makes it hard to follow, 3) Magic numbers without clear meaning. I should suggest extracting helper functions, using early returns, and defining constants."
+        },
+        {
+          "type": "text",
+          "text": "I recommend the following refactoring steps:\n\n1. **Extract helper functions** - Break down the large function into smaller, focused helper functions\n2. **Use early returns** - Reduce nesting by handling edge cases first\n3. **Define constants** - Replace magic numbers with named constants\n\nWould you like me to show you the refactored code?"
+        }
+      ],
+      "model": "claude-sonnet-4-20250514",
+      "createdAt": "2025-01-10T16:00:10.000Z",
+      "finishedAt": "2025-01-10T16:00:30.000Z"
+    }
+  ]
+}

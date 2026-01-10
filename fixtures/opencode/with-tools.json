@@ -1,0 +1,106 @@
+{
+  "session": {
+    "id": "oc-session-tools-001",
+    "parentSessionId": null,
+    "title": "File editing session",
+    "messageCount": 4,
+    "promptTokens": 500,
+    "completionTokens": 800,
+    "cost": 0.013,
+    "createdAt": "2025-01-10T14:00:00.000Z",
+    "updatedAt": "2025-01-10T14:05:00.000Z"
+  },
+  "messages": [
+    {
+      "id": "msg-001",
+      "sessionId": "oc-session-tools-001",
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "Read the package.json file and tell me the project name"
+        }
+      ],
+      "model": null,
+      "createdAt": "2025-01-10T14:00:00.000Z",
+      "finishedAt": null
+    },
+    {
+      "id": "msg-002",
+      "sessionId": "oc-session-tools-001",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "I'll read the package.json file for you."
+        },
+        {
+          "type": "tool",
+          "id": "tool-001",
+          "name": "read_file",
+          "state": {
+            "input": {
+              "file_path": "/home/user/project/package.json"
+            },
+            "output": {
+              "content": "{\n  \"name\": \"my-awesome-project\",\n  \"version\": \"1.0.0\"\n}"
+            },
+            "status": "completed"
+          }
+        },
+        {
+          "type": "text",
+          "text": "The project name is **my-awesome-project** (version 1.0.0)."
+        }
+      ],
+      "model": "claude-sonnet-4-20250514",
+      "createdAt": "2025-01-10T14:00:05.000Z",
+      "finishedAt": "2025-01-10T14:00:15.000Z"
+    },
+    {
+      "id": "msg-003",
+      "sessionId": "oc-session-tools-001",
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "Run npm test to see if tests pass"
+        }
+      ],
+      "model": null,
+      "createdAt": "2025-01-10T14:01:00.000Z",
+      "finishedAt": null
+    },
+    {
+      "id": "msg-004",
+      "sessionId": "oc-session-tools-001",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "tool",
+          "id": "tool-002",
+          "name": "shell",
+          "state": {
+            "input": {
+              "command": ["bash", "-lc", "npm test"],
+              "workdir": "/home/user/project"
+            },
+            "output": {
+              "stdout": "PASS src/index.test.ts\n  ✓ should pass (5ms)\n\nTest Suites: 1 passed, 1 total\nTests:       1 passed, 1 total",
+              "stderr": "",
+              "exitCode": 0
+            },
+            "status": "completed"
+          }
+        },
+        {
+          "type": "text",
+          "text": "All tests passed! The test suite ran successfully with 1 test passing."
+        }
+      ],
+      "model": "claude-sonnet-4-20250514",
+      "createdAt": "2025-01-10T14:01:05.000Z",
+      "finishedAt": "2025-01-10T14:01:20.000Z"
+    }
+  ]
+}

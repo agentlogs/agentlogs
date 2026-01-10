@@ -1,0 +1,43 @@
+{
+  "session": {
+    "id": "oc-session-simple-001",
+    "parentSessionId": null,
+    "title": "Simple conversation",
+    "messageCount": 2,
+    "promptTokens": 150,
+    "completionTokens": 200,
+    "cost": 0.0035,
+    "createdAt": "2025-01-10T10:00:00.000Z",
+    "updatedAt": "2025-01-10T10:01:00.000Z"
+  },
+  "messages": [
+    {
+      "id": "msg-001",
+      "sessionId": "oc-session-simple-001",
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "What is the capital of France?"
+        }
+      ],
+      "model": null,
+      "createdAt": "2025-01-10T10:00:00.000Z",
+      "finishedAt": null
+    },
+    {
+      "id": "msg-002",
+      "sessionId": "oc-session-simple-001",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "The capital of France is Paris. It is the largest city in France and serves as the country's political, economic, and cultural center."
+        }
+      ],
+      "model": "claude-sonnet-4-20250514",
+      "createdAt": "2025-01-10T10:00:05.000Z",
+      "finishedAt": "2025-01-10T10:00:10.000Z"
+    }
+  ]
+}

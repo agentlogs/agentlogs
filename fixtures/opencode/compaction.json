@@ -1,0 +1,76 @@
+{
+  "session": {
+    "id": "oc-session-compaction-001",
+    "parentSessionId": null,
+    "title": "Long session with compaction",
+    "messageCount": 5,
+    "promptTokens": 50000,
+    "completionTokens": 30000,
+    "cost": 0.8,
+    "createdAt": "2025-01-10T09:00:00.000Z",
+    "updatedAt": "2025-01-10T12:00:00.000Z"
+  },
+  "messages": [
+    {
+      "id": "msg-compaction-001",
+      "sessionId": "oc-session-compaction-001",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "compaction",
+          "summary": "Previous conversation summary: The user asked to build a REST API for a todo application. We implemented: 1) Express server setup with TypeScript, 2) CRUD endpoints for todos (/api/todos), 3) SQLite database with Drizzle ORM, 4) Input validation with Zod. All tests are passing."
+        }
+      ],
+      "model": "claude-sonnet-4-20250514",
+      "createdAt": "2025-01-10T11:00:00.000Z",
+      "finishedAt": "2025-01-10T11:00:01.000Z"
+    },
+    {
+      "id": "msg-001",
+      "sessionId": "oc-session-compaction-001",
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "Now add authentication to the API"
+        }
+      ],
+      "model": null,
+      "createdAt": "2025-01-10T11:00:10.000Z",
+      "finishedAt": null
+    },
+    {
+      "id": "msg-002",
+      "sessionId": "oc-session-compaction-001",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "I'll add JWT-based authentication to your todo API. Let me update the necessary files."
+        },
+        {
+          "type": "tool",
+          "id": "tool-001",
+          "name": "write_file",
+          "state": {
+            "input": {
+              "file_path": "/home/user/todo-api/src/middleware/auth.ts",
+              "content": "import jwt from 'jsonwebtoken';\n\nexport function authMiddleware(req, res, next) {\n  // Auth implementation\n}"
+            },
+            "output": {
+              "success": true
+            },
+            "status": "completed"
+          }
+        },
+        {
+          "type": "text",
+          "text": "I've added the authentication middleware. You'll need to install `jsonwebtoken` and set a JWT_SECRET environment variable."
+        }
+      ],
+      "model": "claude-sonnet-4-20250514",
+      "createdAt": "2025-01-10T11:00:20.000Z",
+      "finishedAt": "2025-01-10T11:01:00.000Z"
+    }
+  ]
+}

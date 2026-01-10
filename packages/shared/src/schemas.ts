@@ -282,7 +282,7 @@ export const unifiedGitContextSchema = z
 export const unifiedTranscriptSchema = z.object({
   v: z.literal(1),
   id: z.string(),
-  source: z.enum(["claude-code", "codex", "unknown"]),
+  source: z.enum(["claude-code", "codex", "opencode", "unknown"]),
   timestamp: z.coerce.date(), // Accept both Date and string (for JSON serialization)
   preview: z.string().nullable(),
   model: z.string().nullable(),
