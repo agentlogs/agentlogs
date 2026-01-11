@@ -13,6 +13,54 @@ export interface UploadOptions {
 }
 
 /**
+ * Check if a blob exists on the server using HEAD request.
+ * Returns true if blob exists, false otherwise.
+ */
+async function checkBlobExists(
+  sha256: string,
+  serverUrl: string,
+  authToken: string | null,
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${serverUrl}/api/blobs/${sha256}`, {
+      method: "HEAD",
+      headers: {
+        ...(authToken && { Authorization: `Bearer ${authToken}` }),
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+    return response.ok;
+  } catch {
+    // On error, assume blob doesn't exist (will be uploaded)
+    return false;
+  }
+}
+
+/**
+ * Filter out blobs that already exist on the server.
+ * Uses HEAD requests in parallel for efficiency.
+ */
+async function filterNewBlobs(
+  blobs: UploadPayload["blobs"],
+  serverUrl: string,
+  authToken: string | null,
+): Promise<UploadPayload["blobs"]> {
+  if (!blobs || blobs.length === 0) {
+    return undefined;
+  }
+
+  const results = await Promise.all(
+    blobs.map(async (blob) => ({
+      blob,
+      exists: await checkBlobExists(blob.sha256, serverUrl, authToken),
+    })),
+  );
+
+  const newBlobs = results.filter((r) => !r.exists).map((r) => r.blob);
+  return newBlobs.length > 0 ? newBlobs : undefined;
+}
+
+/**
  * Upload transcript to Vibe Insights server.
  * Returns success status and optional transcript ID.
  */
@@ -23,6 +71,8 @@ export async function uploadTranscript(
   const serverUrl = options.serverUrl ?? process.env.VI_SERVER_URL ?? DEFAULT_SERVER_URL;
   const authToken = options.authToken ?? null;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+  const blobsToUpload = await filterNewBlobs(payload.blobs, serverUrl, authToken);
 
   const formData = new FormData();
   const filename = `${payload.unifiedTranscript.id || "transcript"}.jsonl`;
@@ -37,9 +87,9 @@ export async function uploadTranscript(
     filename,
   );
 
-  // Add blobs as separate form fields with "blob:" prefix
-  if (payload.blobs) {
-    for (const blob of payload.blobs) {
+  // Add only new blobs as separate form fields with "blob:" prefix
+  if (blobsToUpload) {
+    for (const blob of blobsToUpload) {
       // Convert Uint8Array to ArrayBuffer for Blob compatibility
       const arrayBuffer = blob.data.buffer.slice(
         blob.data.byteOffset,

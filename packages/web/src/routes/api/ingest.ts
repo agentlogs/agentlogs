@@ -253,13 +253,30 @@ export const Route = createFileRoute("/api/ingest")({
             blobCount: blobEntries.length,
           });
 
-          for (const { sha256: blobSha256, blob } of blobEntries) {
+          for (const { sha256: claimedSha256, blob } of blobEntries) {
+            // Read blob data and compute actual SHA256
+            const blobData = await blob.arrayBuffer();
+            const actualSha256 = await sha256HexBuffer(blobData);
+
+            // Validate that the claimed SHA matches the actual content
+            if (actualSha256 !== claimedSha256) {
+              logger.warn("Blob SHA256 mismatch", {
+                userId,
+                transcriptId,
+                claimed: claimedSha256,
+                actual: actualSha256,
+              });
+              return json(
+                { error: `Blob SHA256 mismatch: claimed ${claimedSha256}, actual ${actualSha256}` },
+                { status: 400 },
+              );
+            }
+
             // Upload blob to R2 if it doesn't exist (content-addressed deduplication)
-            const r2Key = `blobs/${blobSha256}`;
+            const r2Key = `blobs/${actualSha256}`;
             const existingBlob = await r2Bucket.head(r2Key);
 
             if (!existingBlob) {
-              const blobData = await blob.arrayBuffer();
               await r2Bucket.put(r2Key, blobData, {
                 httpMetadata: {
                   contentType: blob.type || "application/octet-stream",
@@ -280,7 +297,7 @@ export const Route = createFileRoute("/api/ingest")({
             await db
               .insert(blobs)
               .values({
-                sha256: blobSha256,
+                sha256: actualSha256,
                 mediaType: blob.type || "application/octet-stream",
                 size: blob.size,
               })
@@ -291,7 +308,7 @@ export const Route = createFileRoute("/api/ingest")({
               .insert(transcriptBlobs)
               .values({
                 transcriptId: transcriptDbId,
-                sha256: blobSha256,
+                sha256: actualSha256,
               })
               .onConflictDoNothing();
           }
@@ -382,6 +399,12 @@ async function sha256Hex(input: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(input);
   const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function sha256HexBuffer(input: ArrayBuffer): Promise<string> {
+  const hashBuffer = await crypto.subtle.digest("SHA-256", input);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
