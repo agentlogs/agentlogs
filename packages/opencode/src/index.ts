@@ -17,12 +17,7 @@
  */
 
 import type { OpenCodeMessage, OpenCodeSession } from "@vibeinsights/shared";
-import {
-  appendTranscriptLinkToCommit,
-  extractGitContext,
-  isGitCommitCommand,
-  type PluginContext,
-} from "./git";
+import { appendTranscriptLinkToCommit, extractGitContext, isGitCommitCommand, type PluginContext } from "./git";
 import { buildTranscriptUrl, uploadOpenCodeTranscript } from "./upload";
 
 // ============================================================================

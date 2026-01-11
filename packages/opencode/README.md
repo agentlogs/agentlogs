@@ -1,4 +1,4 @@
-# @vibeinsights/opencode-plugin
+# @vibeinsights/opencode
 
 OpenCode plugin for [Vibe Insights](https://vibeinsights.dev) - automatically capture and upload AI coding session transcripts.
 
@@ -14,9 +14,9 @@ OpenCode plugin for [Vibe Insights](https://vibeinsights.dev) - automatically ca
 ### From npm
 
 ```bash
-npm install -g @vibeinsights/opencode-plugin
+npm install -g @vibeinsights/opencode
 # or
-bun add -g @vibeinsights/opencode-plugin
+bun add -g @vibeinsights/opencode
 ```
 
 ### Configure OpenCode
@@ -26,7 +26,7 @@ Add the plugin to your `opencode.json` config file:
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@vibeinsights/opencode-plugin"]
+  "plugin": ["@vibeinsights/opencode"]
 }
 ```
 
@@ -42,12 +42,13 @@ Or for local development:
 
 ### Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `VI_AUTH_TOKEN` | Yes | Your Vibe Insights authentication token |
-| `VI_SERVER_URL` | No | Server URL (default: `https://vibeinsights.dev`) |
+| Variable        | Required | Description                                      |
+| --------------- | -------- | ------------------------------------------------ |
+| `VI_AUTH_TOKEN` | Yes      | Your Vibe Insights authentication token          |
+| `VI_SERVER_URL` | No       | Server URL (default: `https://vibeinsights.dev`) |
 
 Alternative variable names are also supported:
+
 - `VIBEINSIGHTS_AUTH_TOKEN` (alias for `VI_AUTH_TOKEN`)
 - `VIBEINSIGHTS_BASE_URL` (alias for `VI_SERVER_URL`)
 
@@ -89,13 +90,13 @@ Transcript: https://vibeinsights.dev/transcripts/abc123
 
 The plugin responds to these OpenCode events:
 
-| Event | Action |
-|-------|--------|
+| Event             | Action                     |
+| ----------------- | -------------------------- |
 | `session.created` | Start tracking new session |
-| `session.updated` | Update session metadata |
-| `message.updated` | Collect message content |
-| `session.idle` | Upload transcript |
-| `session.deleted` | Clear session state |
+| `session.updated` | Update session metadata    |
+| `message.updated` | Collect message content    |
+| `session.idle`    | Upload transcript          |
+| `session.deleted` | Clear session state        |
 
 ## API
 
@@ -103,12 +104,12 @@ The plugin responds to these OpenCode events:
 
 ```typescript
 import {
-  vibeInsightsPlugin,       // Main plugin function
-  extractGitContext,        // Extract git repo/branch info
-  isGitCommitCommand,       // Check if command is git commit
+  vibeInsightsPlugin, // Main plugin function
+  extractGitContext, // Extract git repo/branch info
+  isGitCommitCommand, // Check if command is git commit
   uploadOpenCodeTranscript, // Manual transcript upload
-  buildTranscriptUrl,       // Build transcript URL from ID
-} from "@vibeinsights/opencode-plugin";
+  buildTranscriptUrl, // Build transcript URL from ID
+} from "@vibeinsights/opencode";
 ```
 
 ### Manual Upload
@@ -116,7 +117,7 @@ import {
 You can also upload transcripts programmatically:
 
 ```typescript
-import { uploadOpenCodeTranscript } from "@vibeinsights/opencode-plugin";
+import { uploadOpenCodeTranscript } from "@vibeinsights/opencode";
 
 const result = await uploadOpenCodeTranscript({
   session: { id: "...", createdAt: "...", ... },
@@ -157,7 +158,7 @@ cd vibeinsights
 bun install
 
 # Link the plugin locally
-cd packages/opencode-plugin
+cd packages/opencode
 bun link
 ```
 
@@ -165,7 +166,7 @@ bun link
 
 ```bash
 # Run type checking
-bun run typecheck
+bun run check
 
 # Build
 bun run build

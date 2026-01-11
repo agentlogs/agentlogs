@@ -1,10 +1,26 @@
 {
-  "name": "@vibeinsights/opencode-plugin",
+  "name": "@vibeinsights/opencode",
   "version": "0.0.1",
+  "keywords": [
+    "ai-coding",
+    "opencode",
+    "plugin",
+    "transcript",
+    "vibeinsights"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vibeinsights/vibeinsights.git",
+    "directory": "packages/opencode"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
-  "files": ["dist", "src"],
   "publishConfig": {
     "access": "public",
     "main": "dist/index.js",
@@ -13,19 +29,12 @@
   "scripts": {
     "build": "bun build ./src/index.ts --outdir ./dist --target node --external @vibeinsights/shared",
     "prepublishOnly": "bun run build",
-    "typecheck": "tsc --noEmit --project tsconfig.json"
+    "check": "tsgo --project tsconfig.json"
   },
   "dependencies": {
     "@vibeinsights/shared": "workspace:*"
   },
   "peerDependencies": {
     "bun": ">=1.0.0"
-  },
-  "keywords": ["opencode", "plugin", "vibeinsights", "transcript", "ai-coding"],
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/vibeinsights/vibeinsights.git",
-    "directory": "packages/opencode-plugin"
   }
 }

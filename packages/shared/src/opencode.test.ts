@@ -191,26 +191,15 @@ describe("convertOpenCodeTranscript", () => {
   });
 
   describe("with-images.json", () => {
-    test("converts image files to image messages", async () => {
+    test("skips image files (not supported in current schema)", async () => {
       const transcript = await loadAndConvert("with-images.json");
       expect(transcript).not.toBeNull();
 
-      const imageMessages = transcript!.messages.filter((m) => m.type === "image");
-      expect(imageMessages).toHaveLength(1);
-      expect(imageMessages[0]).toMatchObject({
-        type: "image",
-        mediaType: "image/png",
-        data: expect.any(String),
-      });
-    });
-
-    test("extracts base64 data from data URLs", async () => {
-      const transcript = await loadAndConvert("with-images.json");
-
-      const image = transcript!.messages.find((m) => m.type === "image");
-      // Should extract base64 portion after the comma
-      expect((image as { data?: string }).data).not.toContain("data:image/png;base64,");
-      expect((image as { data?: string }).data).toMatch(/^[A-Za-z0-9+/=]+$/);
+      // Images are skipped, so we should only have user and agent messages
+      const types = transcript!.messages.map((m) => m.type);
+      expect(types).not.toContain("image");
+      expect(types).toContain("user");
+      expect(types).toContain("agent");
     });
   });
 

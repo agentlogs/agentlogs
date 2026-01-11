@@ -118,10 +118,7 @@ export function extractCommitMessage(input: unknown): string | null {
 /**
  * Modify git commit command to append transcript link to message.
  */
-export function appendTranscriptLinkToCommit(
-  input: unknown,
-  transcriptUrl: string,
-): Record<string, unknown> | null {
+export function appendTranscriptLinkToCommit(input: unknown, transcriptUrl: string): Record<string, unknown> | null {
   if (!input || typeof input !== "object") return null;
 
   const record = { ...(input as Record<string, unknown>) };

@@ -1,10 +1,5 @@
 import path from "node:path";
-import type {
-  UnifiedGitContext,
-  UnifiedTokenUsage,
-  UnifiedTranscript,
-  UnifiedTranscriptMessage,
-} from "./claudecode";
+import type { UnifiedGitContext, UnifiedTokenUsage, UnifiedTranscript, UnifiedTranscriptMessage } from "./claudecode";
 import { formatCwdWithTilde } from "./paths";
 import type { LiteLLMModelPricing } from "./pricing";
 import {
@@ -219,17 +214,7 @@ export function convertOpenCodeTranscript(
         }
 
         case "file": {
-          // Only handle image files
-          if (part.mime.startsWith("image/")) {
-            unifiedMessages.push(
-              unifiedTranscriptMessageSchema.parse({
-                type: "image",
-                mediaType: part.mime,
-                data: part.url.startsWith("data:") ? extractBase64Data(part.url) : undefined,
-                timestamp,
-              }),
-            );
-          }
+          // Skip file/image parts - not supported in current schema
           break;
         }
       }
@@ -327,11 +312,6 @@ function truncate(value: string, maxLength: number): string {
   if (value.length <= maxLength) return value;
   if (maxLength <= 1) return value.slice(0, maxLength);
   return `${value.slice(0, maxLength - 1)}…`;
-}
-
-function extractBase64Data(dataUrl: string): string | undefined {
-  const match = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
-  return match?.[1];
 }
 
 // ============================================================================
