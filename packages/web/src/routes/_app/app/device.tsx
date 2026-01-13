@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
-import { InputOTP, InputOTPGroup, InputOTPSlot } from "../../components/ui/input-otp";
-import { authClient } from "../../lib/auth-client";
+import { Button } from "../../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "../../../components/ui/input-otp";
+import { authClient } from "../../../lib/auth-client";
 
-export const Route = createFileRoute("/_app/device")({
+export const Route = createFileRoute("/_app/app/device")({
   component: DeviceAuthorizationPage,
   validateSearch: (search: Record<string, unknown>) => {
     return {

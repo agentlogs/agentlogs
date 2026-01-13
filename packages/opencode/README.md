@@ -83,7 +83,7 @@ Example enhanced commit:
 ```
 feat: add user authentication
 
-Transcript: https://agentlogs.ai/transcripts/abc123
+Transcript: https://agentlogs.ai/app/logs/abc123
 ```
 
 ## Plugin Events

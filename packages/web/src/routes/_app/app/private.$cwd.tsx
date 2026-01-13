@@ -4,19 +4,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { getTranscriptsByRepo } from "../../lib/server-functions";
+import { getTranscriptsByCwd } from "../../../lib/server-functions";
 
-type RepoTranscripts = Awaited<ReturnType<typeof getTranscriptsByRepo>>;
+type PrivateTranscripts = Awaited<ReturnType<typeof getTranscriptsByCwd>>;
 
-export const Route = createFileRoute("/_app/repos/$id")({
-  loader: ({ params }) => getTranscriptsByRepo({ data: params.id }),
-  component: RepoDetailComponent,
+export const Route = createFileRoute("/_app/app/private/$cwd")({
+  loader: ({ params }) => getTranscriptsByCwd({ data: params.cwd }),
+  component: PrivateDetailComponent,
 });
 
-function RepoDetailComponent() {
-  const transcripts = Route.useLoaderData() as RepoTranscripts;
-  const { id } = Route.useParams();
-  const formatSource = (source: RepoTranscripts[number]["source"]) => {
+function PrivateDetailComponent() {
+  const transcripts = Route.useLoaderData() as PrivateTranscripts;
+  const { cwd } = Route.useParams();
+  const formatSource = (source: PrivateTranscripts[number]["source"]) => {
     switch (source) {
       case "claude-code":
         return "Claude Code";
@@ -33,7 +33,7 @@ function RepoDetailComponent() {
         <Button variant="ghost" size="sm" asChild>
           <Link to="/app">← Back to Dashboard</Link>
         </Button>
-        <h2 className="text-2xl font-bold tracking-tight">Repository: {decodeURIComponent(id)}</h2>
+        <h2 className="text-2xl font-bold tracking-tight">Private Transcripts: {decodeURIComponent(cwd)}</h2>
       </div>
 
       <Card>
@@ -92,7 +92,7 @@ function RepoDetailComponent() {
                   </TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="sm" asChild>
-                      <Link to="/transcripts/$id" params={{ id: transcript.id }}>
+                      <Link to="/app/logs/$id" params={{ id: transcript.id }}>
                         View
                       </Link>
                     </Button>

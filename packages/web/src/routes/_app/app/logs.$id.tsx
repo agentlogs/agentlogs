@@ -21,12 +21,12 @@ import {
   Terminal,
   Zap,
 } from "lucide-react";
-import { ClaudeCodeIcon, CodexIcon, OpenCodeIcon } from "../../components/icons/source-icons";
+import { ClaudeCodeIcon, CodexIcon, OpenCodeIcon } from "../../../components/icons/source-icons";
 import { useEffect, useState } from "react";
-import { extractImageReferences, replaceImageReferencesForDisplay, type ImageReference } from "../../lib/message-utils";
-import { getTranscript } from "../../lib/server-functions";
+import { extractImageReferences, replaceImageReferencesForDisplay, type ImageReference } from "../../../lib/message-utils";
+import { getTranscript } from "../../../lib/server-functions";
 
-export const Route = createFileRoute("/_app/transcripts/$id")({
+export const Route = createFileRoute("/_app/app/logs/$id")({
   loader: ({ params }) => getTranscript({ data: params.id }),
   component: TranscriptDetailComponent,
 });

@@ -3,11 +3,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronDown, FileCode, Folder, MessageSquare, Search, Terminal, Wrench } from "lucide-react";
-import { ClaudeCodeIcon, CodexIcon, OpenCodeIcon } from "../../components/icons/source-icons";
+import { ClaudeCodeIcon, CodexIcon, OpenCodeIcon } from "../../../components/icons/source-icons";
 import { useMemo, useState } from "react";
-import { getAllTranscripts } from "../../lib/server-functions";
+import { getAllTranscripts } from "../../../lib/server-functions";
 
-export const Route = createFileRoute("/_app/app")({
+export const Route = createFileRoute("/_app/app/")({
   loader: async () => {
     try {
       const transcripts = await getAllTranscripts();

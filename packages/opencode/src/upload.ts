@@ -69,7 +69,7 @@ export async function uploadOpenCodeTranscript(params: UploadParams): Promise<Up
       return {
         success: true,
         transcriptId: result.transcriptId,
-        transcriptUrl: `${baseUrl}/transcripts/${result.transcriptId}`,
+        transcriptUrl: `${baseUrl}/app/logs/${result.transcriptId}`,
       };
     }
 
@@ -90,5 +90,5 @@ export async function uploadOpenCodeTranscript(params: UploadParams): Promise<Up
  */
 export function buildTranscriptUrl(transcriptId: string, serverUrl?: string): string {
   const baseUrl = serverUrl ?? process.env.VI_SERVER_URL ?? "https://agentlogs.ai";
-  return `${baseUrl}/transcripts/${transcriptId}`;
+  return `${baseUrl}/app/logs/${transcriptId}`;
 }

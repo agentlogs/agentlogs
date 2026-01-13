@@ -6,7 +6,7 @@ export const Route = createFileRoute("/_app/s/$sessionId")({
     const transcript = await getTranscriptBySessionId({ data: params.sessionId });
 
     throw redirect({
-      to: "/transcripts/$id",
+      to: "/app/logs/$id",
       params: {
         id: transcript.id,
       },
