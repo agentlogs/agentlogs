@@ -73,6 +73,11 @@ export function writeConfig(config: Config): void {
  * Uses environment-specific account names
  */
 export function getToken(): string | null {
+  const envToken = process.env.AGENTLOGS_AUTH_TOKEN?.trim();
+  if (envToken) {
+    return envToken;
+  }
+
   try {
     const config = readConfig();
     if (!config.user?.email) {
