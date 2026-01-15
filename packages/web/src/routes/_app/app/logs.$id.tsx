@@ -393,15 +393,9 @@ function ImageGallery({ images }: { images: ImageReference[] }) {
   return (
     <div className="mt-3 flex flex-wrap gap-2">
       {images.map((img) => (
-        <a
-          key={img.sha256}
-          href={`/api/blobs/${img.sha256}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block"
-        >
+        <a key={img.sha256} href={`/blobs/${img.sha256}`} target="_blank" rel="noopener noreferrer" className="block">
           <img
-            src={`/api/blobs/${img.sha256}`}
+            src={`/blobs/${img.sha256}`}
             alt={`Image ${img.sha256.slice(0, 8)}`}
             className="max-h-64 max-w-full rounded-lg border border-border object-contain hover:border-primary"
             loading="lazy"

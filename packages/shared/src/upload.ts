@@ -18,7 +18,7 @@ export interface UploadOptions {
  */
 async function checkBlobExists(sha256: string, serverUrl: string, authToken: string | null): Promise<boolean> {
   try {
-    const response = await fetch(`${serverUrl}/api/blobs/${sha256}`, {
+    const response = await fetch(`${serverUrl}/blobs/${sha256}`, {
       method: "HEAD",
       headers: {
         ...(authToken && { Authorization: `Bearer ${authToken}` }),

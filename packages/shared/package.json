@@ -18,6 +18,7 @@
     "check": "tsgo --project tsconfig.json"
   },
   "dependencies": {
+    "@orpc/client": "^1.13.4",
     "zod": "^3.22.4"
   }
 }

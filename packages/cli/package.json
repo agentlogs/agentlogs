@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@napi-rs/keyring": "^1.2.0",
+    "@orpc/client": "^1.13.4",
     "commander": "^14.0.0"
   },
   "devDependencies": {

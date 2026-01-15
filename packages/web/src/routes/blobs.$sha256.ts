@@ -2,9 +2,9 @@ import { createDrizzle } from "@/db";
 import { createFileRoute } from "@tanstack/react-router";
 import { env } from "cloudflare:workers";
 import { and, eq } from "drizzle-orm";
-import { blobs, transcriptBlobs, transcripts } from "../../db/schema";
-import { createAuth } from "../../lib/auth";
-import { logger } from "../../lib/logger";
+import { blobs, transcriptBlobs, transcripts } from "../db/schema";
+import { createAuth } from "../lib/auth";
+import { logger } from "../lib/logger";
 
 type BlobAccessResult = { authorized: true; mediaType: string } | { authorized: false; response: Response };
 
@@ -43,7 +43,7 @@ async function checkBlobAccess(request: Request, sha256: string): Promise<BlobAc
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute("/api/blobs/$sha256" as any)({
+export const Route = createFileRoute("/blobs/$sha256" as any)({
   server: {
     handlers: {
       HEAD: async ({ request, params }: { request: Request; params: { sha256: string } }) => {

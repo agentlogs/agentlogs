@@ -17,3 +17,5 @@ export {
 } from "./opencode";
 export * from "./pricing";
 export * from "./transcripts";
+export * from "./rpc-client";
+export * from "./rpc-contract";

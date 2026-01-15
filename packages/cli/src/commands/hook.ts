@@ -1,5 +1,6 @@
 import { createLogger } from "@agentlogs/shared/logger";
 import { getDevLogPath } from "@agentlogs/shared/paths";
+import { createRpcClient } from "@agentlogs/shared";
 import { getAuthenticatedEnvironments } from "../config";
 import { performUploadToAllEnvs } from "../lib/perform-upload";
 
@@ -378,33 +379,17 @@ async function trackCommit(payload: { sessionId: string; repoPath: string; times
   // Track commit in all authenticated environments
   for (const env of authenticatedEnvs) {
     try {
-      // 5 second timeout for commit tracking - fail silently if it takes too long
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-      const response = await fetch(new URL("/api/commit-track", env.baseURL), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${env.token}`,
-        },
-        body: JSON.stringify({
-          session_id: payload.sessionId,
-          repo_path: payload.repoPath,
-          timestamp: payload.timestamp,
-        }),
-        signal: controller.signal,
+      const client = createRpcClient({
+        serverUrl: env.baseURL,
+        authToken: env.token,
+        timeoutMs: 5000,
       });
 
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        logger.warn(`Commit tracking request to ${env.name} failed`, {
-          sessionId: payload.sessionId.substring(0, 8),
-          status: response.status,
-        });
-        continue;
-      }
+      await client.commitTrack.create({
+        sessionId: payload.sessionId,
+        repoPath: payload.repoPath,
+        timestamp: payload.timestamp,
+      });
 
       logger.info(`Commit tracking recorded (${env.name})`, {
         sessionId: payload.sessionId.substring(0, 8),
