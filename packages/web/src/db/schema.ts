@@ -24,6 +24,9 @@ const generateId = () => getCuidGenerator()();
 export const userRoles = ["waitlist", "user", "admin"] as const;
 export type UserRole = (typeof userRoles)[number];
 
+export const visibilityOptions = ["private", "team", "public"] as const;
+export type VisibilityOption = (typeof visibilityOptions)[number];
+
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -119,6 +122,7 @@ export const repos = sqliteTable("repos", {
     .$defaultFn(() => generateId()),
   repo: text("repo").notNull().unique(),
   lastActivity: text("last_activity"),
+  isPublic: integer("is_public", { mode: "boolean" }),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -134,6 +138,10 @@ export const transcripts = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+
+    // Sharing/visibility
+    visibility: text("visibility").$type<VisibilityOption>().default("private").notNull(),
+    sharedWithTeamId: text("shared_with_team_id").references(() => teams.id, { onDelete: "set null" }),
 
     sha256: text("sha256").notNull(),
     transcriptId: text("transcript_id").notNull(),
@@ -232,6 +240,83 @@ export const transcriptBlobs = sqliteTable(
 );
 
 // =============================================================================
+// Teams Tables (manual team invites for transcript sharing)
+// =============================================================================
+
+/**
+ * Teams - each team has one owner
+ * Name is auto-generated as "[Owner]'s Team"
+ */
+export const teams = sqliteTable("teams", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => generateId()),
+  name: text("name").notNull(),
+  ownerId: text("owner_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+/**
+ * Team members - owner is ALSO added here for simpler access control queries
+ * UNIQUE(teamId, userId) allows future multi-team support
+ * App code enforces 0-1 team for MVP
+ */
+export const teamMembers = sqliteTable(
+  "team_members",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    joinedAt: integer("joined_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => ({
+    teamUserUnique: uniqueIndex("idx_team_members_unique").on(table.teamId, table.userId),
+    userIdx: index("idx_team_members_user").on(table.userId),
+    teamIdx: index("idx_team_members_team").on(table.teamId),
+  }),
+);
+
+/**
+ * Team invites - invite links with 7-day expiry
+ * One active invite per team (generating new one replaces old)
+ */
+export const teamInvites = sqliteTable(
+  "team_invites",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    code: text("code").notNull().unique(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => ({
+    teamIdx: index("idx_team_invites_team").on(table.teamId),
+  }),
+);
+
+// =============================================================================
 // Relations (for Drizzle queries with joins)
 // =============================================================================
 
@@ -240,6 +325,8 @@ export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
   transcripts: many(transcripts),
+  teamMemberships: many(teamMembers),
+  ownedTeams: many(teams),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -270,6 +357,10 @@ export const transcriptsRelations = relations(transcripts, ({ one, many }) => ({
     fields: [transcripts.repoId],
     references: [repos.id],
   }),
+  sharedWithTeam: one(teams, {
+    fields: [transcripts.sharedWithTeamId],
+    references: [teams.id],
+  }),
   transcriptBlobs: many(transcriptBlobs),
 }));
 
@@ -286,5 +377,34 @@ export const transcriptBlobsRelations = relations(transcriptBlobs, ({ one }) => 
   blob: one(blobs, {
     fields: [transcriptBlobs.sha256],
     references: [blobs.sha256],
+  }),
+}));
+
+// Team relations
+export const teamsRelations = relations(teams, ({ one, many }) => ({
+  owner: one(user, {
+    fields: [teams.ownerId],
+    references: [user.id],
+  }),
+  members: many(teamMembers),
+  invites: many(teamInvites),
+  sharedTranscripts: many(transcripts),
+}));
+
+export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
+  team: one(teams, {
+    fields: [teamMembers.teamId],
+    references: [teams.id],
+  }),
+  user: one(user, {
+    fields: [teamMembers.userId],
+    references: [user.id],
+  }),
+}));
+
+export const teamInvitesRelations = relations(teamInvites, ({ one }) => ({
+  team: one(teams, {
+    fields: [teamInvites.teamId],
+    references: [teams.id],
   }),
 }));

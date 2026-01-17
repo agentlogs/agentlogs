@@ -22,6 +22,8 @@ import { Route as ApiTranscriptsClearRouteImport } from './routes/api/transcript
 import { Route as ApiBlobsSha256RouteImport } from './routes/api/blobs.$sha256'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
 import { Route as AppSSessionIdRouteImport } from './routes/_app/s.$sessionId'
+import { Route as AppJoinCodeRouteImport } from './routes/_app/join.$code'
+import { Route as AppAppTeamRouteImport } from './routes/_app/app/team'
 import { Route as AppAppDeviceRouteImport } from './routes/_app/app/device'
 import { Route as AppAppAdminRouteImport } from './routes/_app/app/admin'
 import { Route as AppAppReposIdRouteImport } from './routes/_app/app/repos.$id'
@@ -92,6 +94,16 @@ const AppSSessionIdRoute = AppSSessionIdRouteImport.update({
   path: '/s/$sessionId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppJoinCodeRoute = AppJoinCodeRouteImport.update({
+  id: '/join/$code',
+  path: '/join/$code',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAppTeamRoute = AppAppTeamRouteImport.update({
+  id: '/app/team',
+  path: '/app/team',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppAppDeviceRoute = AppAppDeviceRouteImport.update({
   id: '/app/device',
   path: '/app/device',
@@ -128,6 +140,8 @@ export interface FileRoutesByFullPath {
   '/auth/$': typeof AuthSplatRoute
   '/app/admin': typeof AppAppAdminRoute
   '/app/device': typeof AppAppDeviceRoute
+  '/app/team': typeof AppAppTeamRoute
+  '/join/$code': typeof AppJoinCodeRoute
   '/s/$sessionId': typeof AppSSessionIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/blobs/$sha256': typeof ApiBlobsSha256Route
@@ -147,6 +161,8 @@ export interface FileRoutesByTo {
   '/auth/$': typeof AuthSplatRoute
   '/app/admin': typeof AppAppAdminRoute
   '/app/device': typeof AppAppDeviceRoute
+  '/app/team': typeof AppAppTeamRoute
+  '/join/$code': typeof AppJoinCodeRoute
   '/s/$sessionId': typeof AppSSessionIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/blobs/$sha256': typeof ApiBlobsSha256Route
@@ -168,6 +184,8 @@ export interface FileRoutesById {
   '/auth/$': typeof AuthSplatRoute
   '/_app/app/admin': typeof AppAppAdminRoute
   '/_app/app/device': typeof AppAppDeviceRoute
+  '/_app/app/team': typeof AppAppTeamRoute
+  '/_app/join/$code': typeof AppJoinCodeRoute
   '/_app/s/$sessionId': typeof AppSSessionIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/blobs/$sha256': typeof ApiBlobsSha256Route
@@ -189,6 +207,8 @@ export interface FileRouteTypes {
     | '/auth/$'
     | '/app/admin'
     | '/app/device'
+    | '/app/team'
+    | '/join/$code'
     | '/s/$sessionId'
     | '/api/auth/$'
     | '/api/blobs/$sha256'
@@ -208,6 +228,8 @@ export interface FileRouteTypes {
     | '/auth/$'
     | '/app/admin'
     | '/app/device'
+    | '/app/team'
+    | '/join/$code'
     | '/s/$sessionId'
     | '/api/auth/$'
     | '/api/blobs/$sha256'
@@ -228,6 +250,8 @@ export interface FileRouteTypes {
     | '/auth/$'
     | '/_app/app/admin'
     | '/_app/app/device'
+    | '/_app/app/team'
+    | '/_app/join/$code'
     | '/_app/s/$sessionId'
     | '/api/auth/$'
     | '/api/blobs/$sha256'
@@ -344,6 +368,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSSessionIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/join/$code': {
+      id: '/_app/join/$code'
+      path: '/join/$code'
+      fullPath: '/join/$code'
+      preLoaderRoute: typeof AppJoinCodeRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/app/team': {
+      id: '/_app/app/team'
+      path: '/app/team'
+      fullPath: '/app/team'
+      preLoaderRoute: typeof AppAppTeamRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/app/device': {
       id: '/_app/app/device'
       path: '/app/device'
@@ -385,6 +423,8 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppAppAdminRoute: typeof AppAppAdminRoute
   AppAppDeviceRoute: typeof AppAppDeviceRoute
+  AppAppTeamRoute: typeof AppAppTeamRoute
+  AppJoinCodeRoute: typeof AppJoinCodeRoute
   AppSSessionIdRoute: typeof AppSSessionIdRoute
   AppAppIndexRoute: typeof AppAppIndexRoute
   AppAppLogsIdRoute: typeof AppAppLogsIdRoute
@@ -395,6 +435,8 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppAppAdminRoute: AppAppAdminRoute,
   AppAppDeviceRoute: AppAppDeviceRoute,
+  AppAppTeamRoute: AppAppTeamRoute,
+  AppJoinCodeRoute: AppJoinCodeRoute,
   AppSSessionIdRoute: AppSSessionIdRoute,
   AppAppIndexRoute: AppAppIndexRoute,
   AppAppLogsIdRoute: AppAppLogsIdRoute,

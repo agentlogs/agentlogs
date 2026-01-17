@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Loader2, MessageSquare, Search, Terminal } from "lucide-react";
+import { Globe, Loader2, Lock, MessageSquare, Search, Terminal, Users } from "lucide-react";
 import { ClaudeCodeIcon, CodexIcon, GitHubIcon, OpenCodeIcon } from "../../../components/icons/source-icons";
 import { useCallback, useMemo, useState } from "react";
 import { getTranscriptsPaginated } from "../../../lib/server-functions";
@@ -171,6 +171,18 @@ function getSourceIcon(source: string, className?: string) {
       return <OpenCodeIcon className={className} />;
     default:
       return <Terminal className={className} />;
+  }
+}
+
+function getVisibilityIcon(visibility: string) {
+  switch (visibility) {
+    case "public":
+      return <Globe className="h-3.5 w-3.5 text-emerald-500/60" />;
+    case "team":
+      return <Users className="h-3.5 w-3.5 text-sky-400/60" />;
+    case "private":
+    default:
+      return <Lock className="h-3.5 w-3.5 text-muted-foreground/60" />;
   }
 }
 
@@ -357,6 +369,7 @@ function TranscriptItem({ transcript }: { transcript: TranscriptData }) {
           {/* Meta row */}
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             {getSourceIcon(transcript.source, "h-3.5 w-3.5")}
+            {getVisibilityIcon(transcript.visibility)}
             <span className="font-medium text-foreground/80">{transcript.userName || "Unknown"}</span>
             <span>{timeAgo}</span>
             <span>•</span>

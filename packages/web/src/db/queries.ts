@@ -1,6 +1,6 @@
-import { and, count, desc, eq, isNull, or, lt, sql } from "drizzle-orm";
+import { and, count, desc, eq, exists, isNull, lt, or, sql } from "drizzle-orm";
 import type { DrizzleDB } from ".";
-import { repos, transcripts, user, type UserRole } from "./schema";
+import { repos, teamInvites, teamMembers, teams, transcripts, user, type UserRole } from "./schema";
 
 /**
  * Get all repos for a user with computed transcript count
@@ -205,6 +205,7 @@ export async function getAllTranscripts(db: DrizzleDB, userId: string) {
       branch: transcripts.branch,
       cwd: transcripts.cwd,
       updatedAt: transcripts.updatedAt,
+      visibility: transcripts.visibility,
       userName: user.name,
       userImage: user.image,
       repoName: repos.repo,
@@ -237,8 +238,8 @@ export async function getTranscriptsPaginated(
 ): Promise<PaginatedTranscriptsResult> {
   const { cursor, limit } = params;
 
-  // Build conditions
-  const conditions = [eq(transcripts.userId, userId)];
+  // Build conditions - use visibility-based access control
+  const conditions = [buildVisibilityCondition(userId)];
 
   if (cursor) {
     // Cursor comparison: (createdAt, id) < (cursor.createdAt, cursor.id)
@@ -281,6 +282,7 @@ export async function getTranscriptsPaginated(
       branch: transcripts.branch,
       cwd: transcripts.cwd,
       updatedAt: transcripts.updatedAt,
+      visibility: transcripts.visibility,
       userName: user.name,
       userImage: user.image,
       repoName: repos.repo,
@@ -379,4 +381,260 @@ export async function getAdminAggregateStats(db: DrizzleDB) {
     ...transcriptStats,
     ...repoStats,
   };
+}
+
+// =============================================================================
+// Team Queries
+// =============================================================================
+
+/**
+ * Get user's current team (0 or 1)
+ * Returns null if user is not in any team
+ */
+export async function getUserTeam(db: DrizzleDB, userId: string) {
+  const membership = await db.query.teamMembers.findFirst({
+    where: eq(teamMembers.userId, userId),
+    with: {
+      team: {
+        with: {
+          owner: true,
+          members: { with: { user: true } },
+        },
+      },
+    },
+  });
+  return membership?.team ?? null;
+}
+
+/**
+ * Get team by ID with members
+ */
+export async function getTeamWithMembers(db: DrizzleDB, teamId: string) {
+  return db.query.teams.findFirst({
+    where: eq(teams.id, teamId),
+    with: {
+      owner: true,
+      members: { with: { user: true } },
+      invites: true,
+    },
+  });
+}
+
+/**
+ * Check if user is team owner
+ */
+export async function isTeamOwner(db: DrizzleDB, teamId: string, userId: string) {
+  const team = await db.query.teams.findFirst({
+    where: and(eq(teams.id, teamId), eq(teams.ownerId, userId)),
+  });
+  return !!team;
+}
+
+/**
+ * Check if user is team member
+ */
+export async function isTeamMember(db: DrizzleDB, teamId: string, userId: string) {
+  const member = await db.query.teamMembers.findFirst({
+    where: and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)),
+  });
+  return !!member;
+}
+
+/**
+ * Find user by email (case-insensitive)
+ */
+export async function findUserByEmail(db: DrizzleDB, email: string) {
+  const result = await db
+    .select()
+    .from(user)
+    .where(sql`LOWER(${user.email}) = LOWER(${email})`)
+    .limit(1);
+  return result[0] ?? null;
+}
+
+/**
+ * Get invite by code
+ */
+export async function getInviteByCode(db: DrizzleDB, code: string) {
+  return db.query.teamInvites.findFirst({
+    where: eq(teamInvites.code, code),
+    with: {
+      team: {
+        with: {
+          owner: true,
+          members: true,
+        },
+      },
+    },
+  });
+}
+
+// =============================================================================
+// Access Control Queries
+// =============================================================================
+
+/**
+ * Build WHERE clause for transcript visibility.
+ * Returns SQL condition that matches transcripts the viewer can access.
+ *
+ * Rules:
+ * 1. Owner always sees their own transcripts
+ * 2. Public transcripts visible to everyone
+ * 3. Team transcripts visible if:
+ *    - Viewer is in the sharedWithTeamId team AND
+ *    - Owner is ALSO still in that team (prevents stale sharing after owner leaves)
+ */
+function buildVisibilityCondition(viewerId: string) {
+  return or(
+    // 1. Owner sees own transcripts
+    eq(transcripts.userId, viewerId),
+    // 2. Public transcripts
+    eq(transcripts.visibility, "public"),
+    // 3. Team transcripts where viewer AND owner are both in the shared team
+    and(
+      eq(transcripts.visibility, "team"),
+      // Viewer is in the sharedWithTeamId team
+      exists(
+        sql`(SELECT 1 FROM ${teamMembers} AS viewer_tm
+            WHERE viewer_tm.team_id = ${transcripts.sharedWithTeamId}
+            AND viewer_tm.user_id = ${viewerId})`,
+      ),
+      // Owner is ALSO in the sharedWithTeamId team
+      exists(
+        sql`(SELECT 1 FROM ${teamMembers} AS owner_tm
+            WHERE owner_tm.team_id = ${transcripts.sharedWithTeamId}
+            AND owner_tm.user_id = ${transcripts.userId})`,
+      ),
+    ),
+  );
+}
+
+/**
+ * Get a single transcript with access control.
+ * Returns null if not found or viewer cannot access.
+ */
+export async function getTranscriptWithAccess(db: DrizzleDB, viewerId: string, id: string) {
+  const results = await db
+    .select({
+      id: transcripts.id,
+      repoId: transcripts.repoId,
+      userId: transcripts.userId,
+      sha256: transcripts.sha256,
+      transcriptId: transcripts.transcriptId,
+      source: transcripts.source,
+      createdAt: transcripts.createdAt,
+      preview: transcripts.preview,
+      summary: transcripts.summary,
+      model: transcripts.model,
+      costUsd: transcripts.costUsd,
+      blendedTokens: transcripts.blendedTokens,
+      messageCount: transcripts.messageCount,
+      inputTokens: transcripts.inputTokens,
+      cachedInputTokens: transcripts.cachedInputTokens,
+      outputTokens: transcripts.outputTokens,
+      reasoningOutputTokens: transcripts.reasoningOutputTokens,
+      totalTokens: transcripts.totalTokens,
+      relativeCwd: transcripts.relativeCwd,
+      branch: transcripts.branch,
+      cwd: transcripts.cwd,
+      updatedAt: transcripts.updatedAt,
+      visibility: transcripts.visibility,
+      sharedWithTeamId: transcripts.sharedWithTeamId,
+      userName: user.name,
+      userImage: user.image,
+      repoName: repos.repo,
+    })
+    .from(transcripts)
+    .leftJoin(user, eq(transcripts.userId, user.id))
+    .leftJoin(repos, eq(transcripts.repoId, repos.id))
+    .where(and(eq(transcripts.id, id), buildVisibilityCondition(viewerId)))
+    .limit(1);
+
+  return results[0] ?? null;
+}
+
+/**
+ * Get all transcripts visible to a user, sorted chronologically (newest first).
+ * Includes: own transcripts, public transcripts, team-shared transcripts.
+ */
+export async function getVisibleTranscripts(db: DrizzleDB, viewerId: string) {
+  return await db
+    .select({
+      id: transcripts.id,
+      repoId: transcripts.repoId,
+      userId: transcripts.userId,
+      sha256: transcripts.sha256,
+      transcriptId: transcripts.transcriptId,
+      source: transcripts.source,
+      createdAt: transcripts.createdAt,
+      preview: transcripts.preview,
+      summary: transcripts.summary,
+      model: transcripts.model,
+      costUsd: transcripts.costUsd,
+      blendedTokens: transcripts.blendedTokens,
+      messageCount: transcripts.messageCount,
+      toolCount: transcripts.toolCount,
+      userMessageCount: transcripts.userMessageCount,
+      filesChanged: transcripts.filesChanged,
+      linesAdded: transcripts.linesAdded,
+      linesRemoved: transcripts.linesRemoved,
+      linesModified: transcripts.linesModified,
+      inputTokens: transcripts.inputTokens,
+      cachedInputTokens: transcripts.cachedInputTokens,
+      outputTokens: transcripts.outputTokens,
+      reasoningOutputTokens: transcripts.reasoningOutputTokens,
+      totalTokens: transcripts.totalTokens,
+      relativeCwd: transcripts.relativeCwd,
+      branch: transcripts.branch,
+      cwd: transcripts.cwd,
+      updatedAt: transcripts.updatedAt,
+      visibility: transcripts.visibility,
+      sharedWithTeamId: transcripts.sharedWithTeamId,
+      userName: user.name,
+      userImage: user.image,
+      repoName: repos.repo,
+    })
+    .from(transcripts)
+    .leftJoin(user, eq(transcripts.userId, user.id))
+    .leftJoin(repos, eq(transcripts.repoId, repos.id))
+    .where(buildVisibilityCondition(viewerId))
+    .orderBy(desc(transcripts.createdAt));
+}
+
+/**
+ * Check if viewer can access a specific blob via any transcript.
+ * Returns true if viewer owns any transcript referencing this blob,
+ * OR if any public transcript references it,
+ * OR if any team-shared transcript (with proper access) references it.
+ */
+export async function canAccessBlob(db: DrizzleDB, viewerId: string, blobSha256: string) {
+  // Use raw D1 client for complex EXISTS query
+  const result = await db.$client
+    .prepare(`
+    SELECT 1 FROM transcript_blobs tb
+    INNER JOIN transcripts t ON tb.transcript_id = t.id
+    WHERE tb.sha256 = ?
+    AND (
+      t.user_id = ?
+      OR t.visibility = 'public'
+      OR (
+        t.visibility = 'team'
+        AND EXISTS (
+          SELECT 1 FROM team_members viewer_tm
+          WHERE viewer_tm.team_id = t.shared_with_team_id
+          AND viewer_tm.user_id = ?
+        )
+        AND EXISTS (
+          SELECT 1 FROM team_members owner_tm
+          WHERE owner_tm.team_id = t.shared_with_team_id
+          AND owner_tm.user_id = t.user_id
+        )
+      )
+    )
+    LIMIT 1
+  `)
+    .bind(blobSha256, viewerId, viewerId)
+    .first();
+
+  return result !== null;
 }

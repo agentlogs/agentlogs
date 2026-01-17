@@ -1,8 +1,9 @@
 import { createDrizzle } from "@/db";
 import { createFileRoute } from "@tanstack/react-router";
 import { env } from "cloudflare:workers";
-import { and, eq } from "drizzle-orm";
-import { blobs, transcriptBlobs, transcripts } from "../../db/schema";
+import { eq } from "drizzle-orm";
+import { canAccessBlob } from "../../db/queries";
+import { blobs } from "../../db/schema";
 import { createAuth } from "../../lib/auth";
 import { logger } from "../../lib/logger";
 
@@ -23,15 +24,10 @@ async function checkBlobAccess(request: Request, sha256: string): Promise<BlobAc
     return { authorized: false, response: new Response(null, { status: 401 }) };
   }
 
-  const access = await db
-    .select({ mediaType: blobs.mediaType })
-    .from(transcriptBlobs)
-    .innerJoin(blobs, eq(transcriptBlobs.sha256, blobs.sha256))
-    .innerJoin(transcripts, eq(transcriptBlobs.transcriptId, transcripts.id))
-    .where(and(eq(transcriptBlobs.sha256, sha256), eq(transcripts.userId, session.user.id)))
-    .limit(1);
-
-  if (!access.length) {
+  // Check if user can access this blob via visibility rules
+  // (owns transcript with blob, public transcript, or team-shared transcript)
+  const hasAccess = await canAccessBlob(db, session.user.id, sha256);
+  if (!hasAccess) {
     logger.warn("Blob access denied", {
       sha256: sha256.slice(0, 8),
       userId: session.user.id,
@@ -39,7 +35,19 @@ async function checkBlobAccess(request: Request, sha256: string): Promise<BlobAc
     return { authorized: false, response: new Response(null, { status: 404 }) };
   }
 
-  return { authorized: true, mediaType: access[0].mediaType };
+  // Get media type from blobs table
+  const blobRecord = await db
+    .select({ mediaType: blobs.mediaType })
+    .from(blobs)
+    .where(eq(blobs.sha256, sha256))
+    .limit(1);
+
+  if (!blobRecord.length) {
+    logger.warn("Blob metadata not found", { sha256: sha256.slice(0, 8) });
+    return { authorized: false, response: new Response(null, { status: 404 }) };
+  }
+
+  return { authorized: true, mediaType: blobRecord[0].mediaType };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

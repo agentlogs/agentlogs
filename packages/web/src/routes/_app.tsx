@@ -85,6 +85,13 @@ function AppLayout() {
                 <LogsIcon className="size-4" />
                 Logs
               </Link>
+              <Link
+                to="/app/team"
+                className="flex items-center gap-2 text-sm text-white/50 transition-colors hover:text-white data-[status=active]:text-white"
+              >
+                <UsersIcon className="size-4" />
+                Team
+              </Link>
               {session.user.role === "admin" && (
                 <Link
                   to="/app/admin"

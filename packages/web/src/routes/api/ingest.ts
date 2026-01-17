@@ -1,4 +1,4 @@
-import { createDrizzle } from "@/db";
+import { createDrizzle, type DrizzleDB } from "@/db";
 import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
 import type { TranscriptSource } from "@agentlogs/shared";
@@ -6,9 +6,10 @@ import { unifiedTranscriptSchema } from "@agentlogs/shared/schemas";
 import * as Sentry from "@sentry/cloudflare";
 import { env } from "cloudflare:workers";
 import { and, eq } from "drizzle-orm";
-import { blobs, repos, transcriptBlobs, transcripts } from "../../db/schema";
+import { blobs, repos, teamMembers, transcriptBlobs, transcripts, type VisibilityOption } from "../../db/schema";
 import { createAuth } from "../../lib/auth";
 import { generateSummary } from "../../lib/ai/summarizer";
+import { checkRepoIsPublic } from "../../lib/github";
 import { logger } from "../../lib/logger";
 
 export const Route = createFileRoute("/api/ingest")({
@@ -352,6 +353,10 @@ export const Route = createFileRoute("/api/ingest")({
           // Wait for summary and R2 uploads to complete
           const [summary] = await Promise.all([summaryPromise, r2UploadsPromise, blobUploadsPromise]);
 
+          // Determine default visibility for new transcripts
+          // (only set on creation, not on update - user may have changed it)
+          const defaultVisibility = await getDefaultVisibility(db, repoDbId, repoId, userId);
+
           const metadata = {
             preview: unifiedTranscript.preview,
             summary,
@@ -376,7 +381,8 @@ export const Route = createFileRoute("/api/ingest")({
             createdAt: unifiedTranscript.timestamp,
           };
 
-          // Insert transcript with summary included
+          // Insert transcript with summary and visibility included
+          // Note: visibility is only set on creation, not on update (user may have changed it)
           // Use client-provided ID if available, otherwise let the database generate one
           const insertedTranscript = await Sentry.startSpan({ name: "db.insertTranscript", op: "db.query" }, () =>
             db
@@ -388,6 +394,8 @@ export const Route = createFileRoute("/api/ingest")({
                 sha256,
                 transcriptId,
                 source: unifiedTranscript.source,
+                visibility: defaultVisibility.visibility,
+                sharedWithTeamId: defaultVisibility.sharedWithTeamId,
                 ...metadata,
               })
               .onConflictDoUpdate({
@@ -395,6 +403,8 @@ export const Route = createFileRoute("/api/ingest")({
                 set: {
                   sha256,
                   repoId: repoDbId,
+                  // Note: visibility and sharedWithTeamId are NOT updated on conflict
+                  // to preserve user's manual changes
                   ...metadata,
                 },
               })
@@ -521,4 +531,61 @@ async function gzipString(input: string): Promise<Uint8Array> {
   }
 
   return result;
+}
+
+type DefaultSharingSettings = {
+  visibility: VisibilityOption;
+  sharedWithTeamId: string | null;
+};
+
+/**
+ * Get default visibility for a new transcript.
+ * Always fetches fresh from GitHub, updates cache, falls back on failure.
+ *
+ * Logic:
+ * 1. If repo is open source → public
+ * 2. If has a repo AND user is in a team → team (with specific teamId)
+ * 3. Otherwise → private (includes non-repo transcripts)
+ */
+async function getDefaultVisibility(
+  db: DrizzleDB,
+  repoDbId: string | null,
+  repoFullName: string | null,
+  userId: string,
+): Promise<DefaultSharingSettings> {
+  // 1. Check if repo is public (fresh fetch from GitHub)
+  if (repoDbId && repoFullName) {
+    const freshIsPublic = await checkRepoIsPublic(repoFullName);
+
+    if (freshIsPublic !== null) {
+      // Update cache with fresh value
+      await db.update(repos).set({ isPublic: freshIsPublic }).where(eq(repos.id, repoDbId));
+
+      if (freshIsPublic) {
+        logger.debug("Repo is public, defaulting to public visibility", { repoFullName });
+        return { visibility: "public", sharedWithTeamId: null };
+      }
+    } else {
+      // API failed - check cached value as fallback
+      const repo = await db.query.repos.findFirst({ where: eq(repos.id, repoDbId) });
+      if (repo?.isPublic) {
+        logger.debug("Using cached isPublic=true, defaulting to public visibility", { repoFullName });
+        return { visibility: "public", sharedWithTeamId: null };
+      }
+      // No cache or cache says private - fall through to team check
+    }
+
+    // 2. Has a repo (not public) - check if user is in a team
+    const membership = await db.query.teamMembers.findFirst({
+      where: eq(teamMembers.userId, userId),
+    });
+    if (membership) {
+      logger.debug("User in team, defaulting to team visibility", { repoFullName, teamId: membership.teamId });
+      return { visibility: "team", sharedWithTeamId: membership.teamId };
+    }
+  }
+
+  // 3. Default to private (no repo, or repo but not in team)
+  logger.debug("Defaulting to private visibility", { repoFullName });
+  return { visibility: "private", sharedWithTeamId: null };
 }

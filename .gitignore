@@ -47,3 +47,7 @@ wrangler.toml.local
 
 # Documentation archive
 docs/archive/
+
+# Agentic workflow infrastructure
+features.json
+.claude/progress.txt
