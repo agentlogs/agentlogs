@@ -194,34 +194,33 @@ export const getTranscript = createServerFn({ method: "GET" })
       throw new Error("Transcript not found");
     }
 
-    // Fetch unified transcript from R2
-    const r2Bucket = env.BUCKET;
-
     // Determine R2 key based on whether this is a repo or private transcript
     // Note: Use transcript owner's userId for R2 path, not viewer's
     const r2Key = transcript.repoName
       ? `${transcript.repoName}/${transcript.transcriptId}.json`
       : `private/${transcript.userId}/${transcript.transcriptId}.json`;
-    const r2Object = await r2Bucket.get(r2Key);
+
+    // Fetch R2 content AND commits in parallel for better performance
+    const [r2Object, commits] = await Promise.all([
+      env.BUCKET.get(r2Key),
+      db
+        .select({
+          commitSha: commitTracking.commitSha,
+          commitTitle: commitTracking.commitTitle,
+          branch: commitTracking.branch,
+          timestamp: commitTracking.timestamp,
+        })
+        .from(commitTracking)
+        .where(eq(commitTracking.transcriptId, transcript.id))
+        .orderBy(commitTracking.timestamp),
+    ]);
+
     if (!r2Object) {
       logger.error("Unified transcript not found in R2", { key: r2Key });
       throw new Error("Transcript content not found");
     }
 
-    const unifiedJson = await r2Object.text();
-    const unifiedTranscript = JSON.parse(unifiedJson);
-
-    // Fetch commits associated with this transcript
-    const commits = await db
-      .select({
-        commitSha: commitTracking.commitSha,
-        commitTitle: commitTracking.commitTitle,
-        branch: commitTracking.branch,
-        timestamp: commitTracking.timestamp,
-      })
-      .from(commitTracking)
-      .where(eq(commitTracking.transcriptId, transcript.id))
-      .orderBy(commitTracking.timestamp);
+    const unifiedTranscript = JSON.parse(await r2Object.text());
 
     // Return transcript with metadata and unified content
     return {
