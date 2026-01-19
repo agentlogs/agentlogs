@@ -34,8 +34,24 @@ import { getTranscript, updateVisibility } from "../../../lib/server-functions";
 
 export const Route = createFileRoute("/_app/app/logs/$id")({
   loader: ({ params }) => getTranscript({ data: params.id }),
+  // Cache preloaded data so hover-prefetch is effective
+  staleTime: 30_000, // Data fresh for 30s (covers hover → click)
+  gcTime: 5 * 60_000, // Keep in cache 5min for back navigation
+  pendingComponent: TranscriptPendingComponent,
+  pendingMinMs: 100, // Only show loading if takes > 100ms (avoids flash)
   component: TranscriptDetailComponent,
 });
+
+function TranscriptPendingComponent() {
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">Loading transcript...</p>
+      </div>
+    </div>
+  );
+}
 
 function formatTimeAgo(date: Date): string {
   const now = new Date();
