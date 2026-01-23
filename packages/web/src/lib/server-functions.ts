@@ -31,11 +31,33 @@ const generateId = () => getCuidGenerator()();
 /**
  * Get the current authenticated user's ID
  * Throws if not authenticated
+ *
+ * DEV MODE: When DEV_AUTH_ENABLED=true and dev-user-email cookie is set,
+ * bypasses real auth and returns the user ID for that email.
  */
 async function getAuthenticatedUserId() {
-  const auth = createAuth();
   const headers = getRequestHeaders();
 
+  // DEV MODE: Bypass auth when DEV_AUTH_ENABLED=true
+  if (env.DEV_AUTH_ENABLED === "true") {
+    const cookieHeader = headers.get("cookie") || "";
+    const devEmailMatch = cookieHeader.match(/dev-user-email=([^;]+)/);
+
+    if (devEmailMatch) {
+      const devEmail = decodeURIComponent(devEmailMatch[1]);
+      const db = createDrizzle(env.DB);
+      const users = await db.query.user.findMany({
+        where: (user, { eq }) => eq(user.email, devEmail),
+        limit: 1,
+      });
+
+      if (users.length > 0) {
+        return users[0].id;
+      }
+    }
+  }
+
+  const auth = createAuth();
   const session = await auth.api.getSession({
     headers,
   });
@@ -51,12 +73,53 @@ async function getAuthenticatedUserId() {
 /**
  * Server function to fetch the current session
  * Returns null if not authenticated
+ *
+ * DEV MODE: When DEV_AUTH_ENABLED=true and dev-user-email cookie is set,
+ * bypasses real auth and returns a session for that user.
  */
 export const getSession = createServerFn({ method: "GET" }).handler(async () => {
   try {
+    const headers = getRequestHeaders();
+
+    // DEV MODE: Bypass auth when DEV_AUTH_ENABLED=true
+    if (env.DEV_AUTH_ENABLED === "true") {
+      const cookieHeader = headers.get("cookie") || "";
+      const devEmailMatch = cookieHeader.match(/dev-user-email=([^;]+)/);
+
+      if (devEmailMatch) {
+        const devEmail = decodeURIComponent(devEmailMatch[1]);
+        logger.warn("🚨 DEV AUTH BYPASS - Using dev-user-email cookie", { email: devEmail });
+
+        const db = createDrizzle(env.DB);
+        const users = await db.query.user.findMany({
+          where: (user, { eq }) => eq(user.email, devEmail),
+          limit: 1,
+        });
+
+        if (users.length > 0) {
+          const devUser = users[0];
+          const role = await queries.getUserRole(db, devUser.id).catch(() => "user");
+
+          return {
+            user: {
+              id: devUser.id,
+              email: devUser.email,
+              name: devUser.name,
+              image: devUser.image,
+              role: role ?? "user",
+            },
+            session: {
+              id: "dev-session",
+              expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            },
+          };
+        }
+      }
+    }
+
     const auth = createAuth();
     const session = await auth.api.getSession({
-      headers: getRequestHeaders(),
+      headers,
     });
 
     if (!session?.user) {

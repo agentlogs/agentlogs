@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as WaitlistRouteImport } from './routes/waitlist'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthDevLoginRouteImport } from './routes/auth.dev-login'
 import { Route as AuthSplatRouteImport } from './routes/auth.$'
 import { Route as ApiTunnelRouteImport } from './routes/api/tunnel'
 import { Route as ApiTranscriptsRouteImport } from './routes/api/transcripts'
@@ -42,6 +43,11 @@ const AppRoute = AppRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthDevLoginRoute = AuthDevLoginRouteImport.update({
+  id: '/auth/dev-login',
+  path: '/auth/dev-login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthSplatRoute = AuthSplatRouteImport.update({
@@ -139,6 +145,7 @@ export interface FileRoutesByFullPath {
   '/api/transcripts': typeof ApiTranscriptsRouteWithChildren
   '/api/tunnel': typeof ApiTunnelRoute
   '/auth/$': typeof AuthSplatRoute
+  '/auth/dev-login': typeof AuthDevLoginRoute
   '/app/admin': typeof AppAppAdminRoute
   '/app/device': typeof AppAppDeviceRoute
   '/app/team': typeof AppAppTeamRoute
@@ -160,6 +167,7 @@ export interface FileRoutesByTo {
   '/api/transcripts': typeof ApiTranscriptsRouteWithChildren
   '/api/tunnel': typeof ApiTunnelRoute
   '/auth/$': typeof AuthSplatRoute
+  '/auth/dev-login': typeof AuthDevLoginRoute
   '/app/admin': typeof AppAppAdminRoute
   '/app/device': typeof AppAppDeviceRoute
   '/app/team': typeof AppAppTeamRoute
@@ -183,6 +191,7 @@ export interface FileRoutesById {
   '/api/transcripts': typeof ApiTranscriptsRouteWithChildren
   '/api/tunnel': typeof ApiTunnelRoute
   '/auth/$': typeof AuthSplatRoute
+  '/auth/dev-login': typeof AuthDevLoginRoute
   '/_app/app/admin': typeof AppAppAdminRoute
   '/_app/app/device': typeof AppAppDeviceRoute
   '/_app/app/team': typeof AppAppTeamRoute
@@ -206,6 +215,7 @@ export interface FileRouteTypes {
     | '/api/transcripts'
     | '/api/tunnel'
     | '/auth/$'
+    | '/auth/dev-login'
     | '/app/admin'
     | '/app/device'
     | '/app/team'
@@ -227,6 +237,7 @@ export interface FileRouteTypes {
     | '/api/transcripts'
     | '/api/tunnel'
     | '/auth/$'
+    | '/auth/dev-login'
     | '/app/admin'
     | '/app/device'
     | '/app/team'
@@ -249,6 +260,7 @@ export interface FileRouteTypes {
     | '/api/transcripts'
     | '/api/tunnel'
     | '/auth/$'
+    | '/auth/dev-login'
     | '/_app/app/admin'
     | '/_app/app/device'
     | '/_app/app/team'
@@ -272,6 +284,7 @@ export interface RootRouteChildren {
   ApiTranscriptsRoute: typeof ApiTranscriptsRouteWithChildren
   ApiTunnelRoute: typeof ApiTunnelRoute
   AuthSplatRoute: typeof AuthSplatRoute
+  AuthDevLoginRoute: typeof AuthDevLoginRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiBlobsSha256Route: typeof ApiBlobsSha256Route
   ApiAdminTranscriptUnifiedIdRoute: typeof ApiAdminTranscriptUnifiedIdRoute
@@ -298,6 +311,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/dev-login': {
+      id: '/auth/dev-login'
+      path: '/auth/dev-login'
+      fullPath: '/auth/dev-login'
+      preLoaderRoute: typeof AuthDevLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth/$': {
@@ -467,6 +487,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiTranscriptsRoute: ApiTranscriptsRouteWithChildren,
   ApiTunnelRoute: ApiTunnelRoute,
   AuthSplatRoute: AuthSplatRoute,
+  AuthDevLoginRoute: AuthDevLoginRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiBlobsSha256Route: ApiBlobsSha256Route,
   ApiAdminTranscriptUnifiedIdRoute: ApiAdminTranscriptUnifiedIdRoute,
