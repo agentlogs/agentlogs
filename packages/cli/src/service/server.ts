@@ -29,8 +29,8 @@ import { performUploadToAllEnvs } from "../lib/perform-upload";
 // Grace period before shutdown when all connections close (30 seconds)
 const SHUTDOWN_GRACE_PERIOD_MS = 30_000;
 
-// Poll interval for checking mtime changes (5 seconds)
-const POLL_INTERVAL_MS = 5_000;
+// Poll interval for checking mtime changes (15 seconds)
+const POLL_INTERVAL_MS = 15_000;
 
 // Only track files modified in the last 1 day on startup
 const MAX_FILE_AGE_MS = 24 * 60 * 60 * 1000;
