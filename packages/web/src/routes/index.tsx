@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ClaudeCodeIcon,
+  ClineIcon,
   CodexIcon,
   DiscordIcon,
   GitHubIcon,
@@ -54,7 +55,7 @@ const faqs = [
   },
   {
     q: "Which coding agents are supported?",
-    a: "AgentLogs supports Claude Code, Codex CLI, OpenCode, and Pi. Each has its own lightweight plugin, and we're actively adding support for more agents. Check our docs for the latest compatibility info.",
+    a: "AgentLogs supports Claude Code, Codex CLI, OpenCode, Pi, and Cline. Each has its own lightweight plugin, and we're actively adding support for more agents. Check our docs for the latest compatibility info.",
   },
   {
     q: "How does AgentLogs compare to git-ai or agent-trace?",
@@ -103,7 +104,7 @@ function LandingPage() {
                 <TooltipTrigger asChild>
                   <span
                     data-icon="claude"
-                    className="isolate inline-flex size-11 cursor-pointer items-center justify-center rounded-full bg-[#e87b35] ring-3 ring-background transition-transform duration-200 group-has-[[data-icon=codex]:hover]/icons:-translate-x-1.5 group-has-[[data-icon=opencode]:hover]/icons:-translate-x-1.5 group-has-[[data-icon=pi]:hover]/icons:-translate-x-1.5 sm:size-14"
+                    className="isolate inline-flex size-11 cursor-pointer items-center justify-center rounded-full bg-[#e87b35] ring-3 ring-background transition-transform duration-200 group-has-[[data-icon=cline]:hover]/icons:-translate-x-1.5 group-has-[[data-icon=codex]:hover]/icons:-translate-x-1.5 group-has-[[data-icon=opencode]:hover]/icons:-translate-x-1.5 group-has-[[data-icon=pi]:hover]/icons:-translate-x-1.5 sm:size-14"
                   >
                     <ClaudeCodeIcon className="size-5 text-white sm:size-7" />
                   </span>
@@ -114,7 +115,7 @@ function LandingPage() {
                 <TooltipTrigger asChild>
                   <span
                     data-icon="codex"
-                    className="isolate -ml-1.5 inline-flex size-11 cursor-pointer items-center justify-center rounded-full bg-black ring-3 ring-background transition-transform duration-200 group-has-[[data-icon=claude]:hover]/icons:translate-x-1.5 group-has-[[data-icon=opencode]:hover]/icons:-translate-x-1.5 group-has-[[data-icon=pi]:hover]/icons:-translate-x-1.5 sm:size-14"
+                    className="isolate -ml-1.5 inline-flex size-11 cursor-pointer items-center justify-center rounded-full bg-black ring-3 ring-background transition-transform duration-200 group-has-[[data-icon=claude]:hover]/icons:translate-x-1.5 group-has-[[data-icon=cline]:hover]/icons:-translate-x-1.5 group-has-[[data-icon=opencode]:hover]/icons:-translate-x-1.5 group-has-[[data-icon=pi]:hover]/icons:-translate-x-1.5 sm:size-14"
                   >
                     <CodexIcon className="size-5 text-white sm:size-7" />
                   </span>
@@ -125,7 +126,7 @@ function LandingPage() {
                 <TooltipTrigger asChild>
                   <span
                     data-icon="opencode"
-                    className="isolate -ml-1.5 inline-flex size-11 cursor-pointer items-center justify-center rounded-full bg-white ring-3 ring-background transition-transform duration-200 group-has-[[data-icon=claude]:hover]/icons:translate-x-1.5 group-has-[[data-icon=codex]:hover]/icons:translate-x-1.5 group-has-[[data-icon=pi]:hover]/icons:-translate-x-1.5 sm:size-14"
+                    className="isolate -ml-1.5 inline-flex size-11 cursor-pointer items-center justify-center rounded-full bg-white ring-3 ring-background transition-transform duration-200 group-has-[[data-icon=claude]:hover]/icons:translate-x-1.5 group-has-[[data-icon=cline]:hover]/icons:-translate-x-1.5 group-has-[[data-icon=codex]:hover]/icons:translate-x-1.5 group-has-[[data-icon=pi]:hover]/icons:-translate-x-1.5 sm:size-14"
                   >
                     <OpenCodeIcon className="size-5 text-black sm:size-7" />
                   </span>
@@ -136,12 +137,23 @@ function LandingPage() {
                 <TooltipTrigger asChild>
                   <span
                     data-icon="pi"
-                    className="isolate -ml-1.5 inline-flex size-11 cursor-pointer items-center justify-center rounded-full bg-black ring-3 ring-background transition-transform duration-200 group-has-[[data-icon=claude]:hover]/icons:translate-x-1.5 group-has-[[data-icon=codex]:hover]/icons:translate-x-1.5 group-has-[[data-icon=opencode]:hover]/icons:translate-x-1.5 sm:size-14"
+                    className="isolate -ml-1.5 inline-flex size-11 cursor-pointer items-center justify-center rounded-full bg-black ring-3 ring-background transition-transform duration-200 group-has-[[data-icon=claude]:hover]/icons:translate-x-1.5 group-has-[[data-icon=cline]:hover]/icons:-translate-x-1.5 group-has-[[data-icon=codex]:hover]/icons:translate-x-1.5 group-has-[[data-icon=opencode]:hover]/icons:translate-x-1.5 sm:size-14"
                   >
                     <PiIcon className="size-5 text-white sm:size-7" />
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>Pi</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    data-icon="cline"
+                    className="isolate -ml-1.5 inline-flex size-11 cursor-pointer items-center justify-center rounded-full bg-[#18181b] ring-3 ring-background transition-transform duration-200 group-has-[[data-icon=claude]:hover]/icons:translate-x-1.5 group-has-[[data-icon=codex]:hover]/icons:translate-x-1.5 group-has-[[data-icon=opencode]:hover]/icons:translate-x-1.5 group-has-[[data-icon=pi]:hover]/icons:translate-x-1.5 sm:size-14"
+                  >
+                    <ClineIcon className="size-5 text-[#f9f9f9] sm:size-7" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Cline</TooltipContent>
               </Tooltip>
             </span>
           </h1>
