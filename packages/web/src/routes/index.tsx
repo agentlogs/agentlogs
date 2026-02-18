@@ -80,6 +80,7 @@ function LandingPage() {
             <a
               href="https://github.com/agentlogs/agentlogs"
               target="_blank"
+              rel="noopener noreferrer"
               className="text-muted-foreground hover:text-foreground"
             >
               GitHub
@@ -171,6 +172,7 @@ function LandingPage() {
             <a
               href="https://github.com/agentlogs/agentlogs"
               target="_blank"
+              rel="noopener noreferrer"
               className="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent"
             >
               Star on GitHub →
@@ -246,6 +248,7 @@ function LandingPage() {
               <a
                 href="https://github.com/agentlogs/agentlogs"
                 target="_blank"
+                rel="noopener noreferrer"
                 className="inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
                 View on GitHub →
@@ -286,17 +289,25 @@ function LandingPage() {
             <a
               href="https://github.com/agentlogs/agentlogs"
               target="_blank"
+              rel="noopener noreferrer"
               aria-label="GitHub"
               className="hover:text-foreground"
             >
               <GitHubIcon className="size-4" />
             </a>
-            <a href="https://x.com/agentlogs" target="_blank" aria-label="X" className="hover:text-foreground">
+            <a
+              href="https://x.com/agentlogs"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="X"
+              className="hover:text-foreground"
+            >
               <XIcon className="size-4" />
             </a>
             <a
               href="https://discord.gg/yG4TNv3mjG"
               target="_blank"
+              rel="noopener noreferrer"
               aria-label="Discord"
               className="hover:text-foreground"
             >
