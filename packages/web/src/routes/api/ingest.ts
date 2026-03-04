@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
 import type { TranscriptSource } from "@agentlogs/shared";
 import { unifiedTranscriptSchema } from "@agentlogs/shared/schemas";
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/env";
 import { and, eq } from "drizzle-orm";
 import { canAccessBlob } from "../../db/queries";
 import { blobs, repos, teamMembers, transcriptBlobs, transcripts, type VisibilityOption } from "../../db/schema";

@@ -1,6 +1,6 @@
 import { createDrizzle } from "@/db";
 import { createFileRoute } from "@tanstack/react-router";
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/env";
 import { eq } from "drizzle-orm";
 import * as queries from "../../../db/queries";
 import { transcripts } from "../../../db/schema";

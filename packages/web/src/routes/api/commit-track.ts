@@ -1,7 +1,7 @@
 import { createDrizzle } from "@/db";
 import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/env";
 import { eq } from "drizzle-orm";
 import { commitTracking, transcripts } from "../../db/schema";
 import { requireActiveUser, getAuthErrorResponse } from "../../lib/access-control";

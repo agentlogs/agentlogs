@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/env";
 import { eq } from "drizzle-orm";
 import { createDrizzle } from "../../../db";
 import { transcripts } from "../../../db/schema";

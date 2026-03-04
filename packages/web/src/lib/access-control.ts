@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/env";
 import { createDrizzle, type DrizzleDB } from "../db";
 import * as queries from "../db/queries";
 import type { UserRole } from "../db/schema";

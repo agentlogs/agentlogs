@@ -1,6 +1,6 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText } from "ai";
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/env";
 
 const SUMMARIZE_PROMPT = `Write a 3-6 word title for this coding task. No colons, no articles (a/an/the) at start. Title case.
 
