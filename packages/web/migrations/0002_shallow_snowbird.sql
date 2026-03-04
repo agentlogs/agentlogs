@@ -1,1 +1,0 @@
-CREATE UNIQUE INDEX `idx_user_session` ON `transcripts` (`user_id`,`session_id`);

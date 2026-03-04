@@ -990,33 +990,34 @@ export async function getTeamAgentUsage(db: DrizzleDB, teamId: string, days: num
  * OR if any team-shared transcript (with proper access) references it.
  */
 export async function canAccessBlob(db: DrizzleDB, viewerId: string, blobSha256: string) {
-  // Use raw D1 client for complex EXISTS query
-  const result = await db.$client
+  const result = db.$client
     .prepare(`
-    SELECT 1 FROM transcript_blobs tb
-    INNER JOIN transcripts t ON tb.transcript_id = t.id
-    WHERE tb.sha256 = ?
-    AND (
-      t.user_id = ?
-      OR t.visibility = 'public'
-      OR (
-        t.visibility = 'team'
-        AND EXISTS (
-          SELECT 1 FROM team_members viewer_tm
-          WHERE viewer_tm.team_id = t.shared_with_team_id
-          AND viewer_tm.user_id = ?
+      SELECT 1
+      FROM transcript_blobs tb
+      INNER JOIN transcripts t ON tb.transcript_id = t.id
+      WHERE tb.sha256 = ?
+        AND (
+          t.user_id = ?
+          OR t.visibility = 'public'
+          OR (
+            t.visibility = 'team'
+            AND EXISTS (
+              SELECT 1
+              FROM team_members viewer_tm
+              WHERE viewer_tm.team_id = t.shared_with_team_id
+                AND viewer_tm.user_id = ?
+            )
+            AND EXISTS (
+              SELECT 1
+              FROM team_members owner_tm
+              WHERE owner_tm.team_id = t.shared_with_team_id
+                AND owner_tm.user_id = t.user_id
+            )
+          )
         )
-        AND EXISTS (
-          SELECT 1 FROM team_members owner_tm
-          WHERE owner_tm.team_id = t.shared_with_team_id
-          AND owner_tm.user_id = t.user_id
-        )
-      )
-    )
-    LIMIT 1
-  `)
-    .bind(blobSha256, viewerId, viewerId)
-    .first();
+      LIMIT 1
+    `)
+    .get(blobSha256, viewerId, viewerId);
 
   return result !== null;
 }
@@ -1026,16 +1027,16 @@ export async function canAccessBlob(db: DrizzleDB, viewerId: string, blobSha256:
  * Used for unauthenticated access to blobs.
  */
 export async function canAccessPublicBlob(db: DrizzleDB, blobSha256: string) {
-  const result = await db.$client
+  const result = db.$client
     .prepare(`
-    SELECT 1 FROM transcript_blobs tb
-    INNER JOIN transcripts t ON tb.transcript_id = t.id
-    WHERE tb.sha256 = ?
-    AND t.visibility = 'public'
-    LIMIT 1
-  `)
-    .bind(blobSha256)
-    .first();
+      SELECT 1
+      FROM transcript_blobs tb
+      INNER JOIN transcripts t ON tb.transcript_id = t.id
+      WHERE tb.sha256 = ?
+        AND t.visibility = 'public'
+      LIMIT 1
+    `)
+    .get(blobSha256);
 
   return result !== null;
 }

@@ -1,1 +1,0 @@
-CREATE UNIQUE INDEX `repos_repo_unique` ON `repos` (`repo`);

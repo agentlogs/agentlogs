@@ -1,1 +1,0 @@
-ALTER TABLE `transcripts` ADD `lines_modified` integer DEFAULT 0 NOT NULL;

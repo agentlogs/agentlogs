@@ -1,1 +1,0 @@
-CREATE INDEX `idx_repo_id` ON `transcripts` (`repo_id`);

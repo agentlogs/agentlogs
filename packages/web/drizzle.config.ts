@@ -4,9 +4,8 @@ export default defineConfig({
   schema: "./src/db/schema.ts",
   out: "./migrations",
   dialect: "sqlite",
-  // For Drizzle Studio, use local SQLite file
-  // D1 migrations are applied via wrangler, not via a connection URL
+  // Use local SQLite file credentials for Bun-first development tooling.
   dbCredentials: {
-    url: process.env.DB_LOCAL_PATH || "file:local.db",
+    url: process.env.DB_LOCAL_PATH || "file:.data/db.sqlite",
   },
 });

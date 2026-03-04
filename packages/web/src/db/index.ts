@@ -1,17 +1,27 @@
-import { drizzle } from "drizzle-orm/d1";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
+import { Database } from "bun:sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import { env } from "../lib/env";
 import { logger } from "../lib/logger";
 import * as schema from "./schema";
 
-/**
- * Creates a Drizzle instance for the given D1 database
- * This is called per-request in the Cloudflare Workers environment
- *
- * SQL query logging can be enabled by setting DEBUG_SQL=true environment variable
- */
-export function createDrizzle(d1: D1Database) {
+function resolveDbPath(rawPath: string): string {
+  const withoutPrefix = rawPath.startsWith("file:") ? rawPath.slice(5) : rawPath;
+  return path.resolve(process.cwd(), withoutPrefix);
+}
+
+const dbPath = resolveDbPath(env.DB);
+mkdirSync(path.dirname(dbPath), { recursive: true });
+const sqlite = new Database(dbPath, { create: true });
+
+sqlite.run("PRAGMA journal_mode = WAL;");
+
+export function createDrizzle(_db?: unknown) {
   const enableSqlLogging = process.env.DEBUG_SQL === "true";
 
-  return drizzle(d1, {
+  return drizzle({
+    client: sqlite,
     schema,
     ...(enableSqlLogging && {
       logger: {
