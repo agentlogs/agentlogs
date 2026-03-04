@@ -6,9 +6,6 @@ dist/
 # TanStack artifacts
 .tanstack/
 
-# Fumadocs generated
-.source/
-
 # Vite
 .vite/
 vite.config.ts.timestamp-*
@@ -36,3 +33,6 @@ pnpm-debug.log*
 
 # OS
 .DS_Store
+
+# Local DB and storage
+.data

@@ -32,4 +32,4 @@ export default createServerEntry({
 
     return handler.fetch(request);
   },
-}) as ExportedHandler;
+});

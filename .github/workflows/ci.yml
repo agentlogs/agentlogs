@@ -24,10 +24,6 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Generate Cloudflare types
-        run: bun run cf-typegen
-        working-directory: ./packages/web
-
       - name: Run checks (lint, format, typecheck)
         run: bun run check
 
@@ -79,42 +75,5 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Generate Cloudflare types
-        run: bun run cf-typegen
-        working-directory: ./packages/web
-
       - name: Build application
         run: bun run build
-
-  deploy:
-    name: Deploy to Cloudflare
-    runs-on: ubuntu-latest
-    needs: [check, e2e, build]
-    if: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
-    environment:
-      name: Production
-      url: https://agentlogs.ai
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.10
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run migrations
-        run: bun run db:migrate:remote
-        working-directory: ./packages/web
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-
-      - name: Deploy
-        run: bun run deploy
-        working-directory: ./packages/web
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

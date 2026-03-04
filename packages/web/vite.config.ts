@@ -1,5 +1,4 @@
 import path from "path";
-import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
@@ -18,25 +17,17 @@ export default defineConfig({
     port: 3000,
   },
   optimizeDeps: {
-    // Hold optimization until all static imports are crawled on cold start
-    // This prevents full-page reloads when new dependencies are discovered
     holdUntilCrawlEnd: true,
   },
   plugins: [
-    consoleToFile(), // Must be first to intercept all console output
-    websocketLogger(), // Handle client-side logs via WebSocket
+    consoleToFile(),
+    websocketLogger(),
     requestLogger(),
     devtoolsJson({
-      projectRoot: path.resolve(__dirname, "../.."), // monorepo root
+      projectRoot: path.resolve(__dirname, "../.."),
     }),
     tailwindcss(),
     tsconfigPaths(),
-    cloudflare({
-      viteEnvironment: { name: "ssr" },
-      // Use test database if VITE_USE_TEST_DB is set, otherwise use default .wrangler/state
-      persistState: process.env.VITE_USE_TEST_DB === "true" ? { path: ".wrangler-test/state" } : true,
-      configPath: "wrangler.jsonc",
-    }),
     tanstackStart(),
     viteReact(),
   ],

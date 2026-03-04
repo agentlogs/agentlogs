@@ -40,12 +40,6 @@ logs/
 # Bun
 bun.lockb
 
-# Cloudflare Workers
-.wrangler/
-.wrangler
-.wrangler-test/
-wrangler.toml.local
-
 # Documentation archive
 docs/archive/
 

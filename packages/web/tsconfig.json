@@ -4,11 +4,11 @@
     "jsx": "react-jsx",
     "jsxImportSource": "react",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["@types/bun"],
+    "types": ["@types/bun", "vite/client"],
     "paths": {
       "@/*": ["./src/*"],
       "*": ["./*"]
     }
   },
-  "include": ["src/**/*", "worker-configuration.d.ts"]
+  "include": ["src/**/*"]
 }
