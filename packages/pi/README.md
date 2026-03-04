@@ -144,4 +144,4 @@ agentlogs login agentlogs.ai
 
 ## License
 
-MIT
+FSL-1.1-Apache-2.0

@@ -174,4 +174,4 @@ bun run build
 
 ## License
 
-MIT
+FSL-1.1-Apache-2.0

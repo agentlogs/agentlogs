@@ -2,7 +2,7 @@
   "name": "agentlogs",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "FSL-1.1-Apache-2.0",
   "workspaces": [
     "packages/*"
   ],

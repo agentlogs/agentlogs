@@ -20,4 +20,4 @@ For agent specific commands, see the [agent specific documentation](https://agen
 
 ## License
 
-MIT
+FSL-1.1-Apache-2.0

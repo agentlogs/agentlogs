@@ -117,7 +117,7 @@ See the full [CLI reference](https://agentlogs.ai/docs/cli/commands).
 
 ## Self-Hosting
 
-AgentLogs is fully open-source and can be self-hosted.
+AgentLogs is source-available and can be self-hosted.
 
 ### Prerequisites
 
@@ -242,4 +242,4 @@ AgentLogs was inspired by and builds on ideas from:
 
 ## License
 
-[MIT](LICENSE)
+[FSL-1.1-Apache-2.0](LICENSE)

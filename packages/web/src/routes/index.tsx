@@ -38,8 +38,8 @@ const features = [
 
 const faqs = [
   {
-    q: "Is AgentLogs really open-source?",
-    a: "Yes. The entire codebase (CLI, web app, plugins) is MIT-licensed and on GitHub. You can self-host it on Cloudflare Workers with a single deploy command, or use our hosted version at agentlogs.ai.",
+    q: "Is AgentLogs source-available?",
+    a: "Yes. The entire codebase (CLI, web app, plugins) is on GitHub under FSL-1.1-Apache-2.0. You can self-host it on Cloudflare Workers with a single deploy command, or use our hosted version at agentlogs.ai.",
   },
   {
     q: "How does AgentLogs capture my sessions?",
@@ -233,16 +233,16 @@ function LandingPage() {
           </div>
         </section>
 
-        {/* Open Source */}
+        {/* Source Available */}
         <section className="border-t border-border py-24">
           <div className="mx-auto max-w-2xl px-6 text-center">
-            <p className="text-sm font-medium text-muted-foreground">Open Source</p>
+            <p className="text-sm font-medium text-muted-foreground">Source Available</p>
             <h2 className="mt-2 font-display text-3xl tracking-tight sm:text-4xl">
               Own your data. Self-host in minutes.
             </h2>
             <p className="mt-3 text-muted-foreground">
-              AgentLogs is MIT-licensed and deploys to Cloudflare Workers with a single command. Use our cloud or run it
-              yourself. Your transcripts, your infrastructure.
+              AgentLogs uses FSL-1.1-Apache-2.0 and deploys to Cloudflare Workers with a single command. Use our cloud
+              or run it yourself. Your transcripts, your infrastructure.
             </p>
             <div className="mt-8">
               <a

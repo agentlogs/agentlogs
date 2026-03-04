@@ -14,7 +14,7 @@
     "transcript"
   ],
   "homepage": "https://agentlogs.ai",
-  "license": "MIT",
+  "license": "FSL-1.1-Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/agentlogs/agentlogs",
