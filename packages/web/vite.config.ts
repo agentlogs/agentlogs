@@ -1,6 +1,5 @@
 import path from "path";
 import { cloudflare } from "@cloudflare/vite-plugin";
-import { sentryVitePlugin } from "@sentry/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
@@ -40,14 +39,6 @@ export default defineConfig({
     }),
     tanstackStart(),
     viteReact(),
-    sentryVitePlugin({
-      org: "agentlogs",
-      project: "agentlogs",
-      authToken: process.env.SENTRY_AUTH_TOKEN,
-      sourcemaps: {
-        filesToDeleteAfterUpload: ["./dist/client/**/*.map"],
-      },
-    }),
   ],
   resolve: {
     alias: {

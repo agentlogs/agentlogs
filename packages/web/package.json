@@ -29,8 +29,6 @@
     "@paralleldrive/cuid2": "^3.3.0",
     "@pierre/diffs": "^1.0.11",
     "@react-email/components": "^1.0.8",
-    "@sentry/cloudflare": "^10.40.0",
-    "@sentry/tanstackstart-react": "^10.40.0",
     "@tanstack/react-router": "^1.163.2",
     "@tanstack/react-start": "^1.163.2",
     "ai": "^6.0.103",
@@ -56,7 +54,6 @@
   "devDependencies": {
     "@better-auth/cli": "^1.4.19",
     "@cloudflare/vite-plugin": "^1.25.6",
-    "@sentry/vite-plugin": "^4.9.1",
     "@tailwindcss/vite": "^4.2.1",
     "@types/node": "^24.10.15",
     "@types/react": "^19.2.14",

@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
 import type { TranscriptSource } from "@agentlogs/shared";
 import { unifiedTranscriptSchema } from "@agentlogs/shared/schemas";
-import * as Sentry from "@sentry/cloudflare";
+import * as telemetry from "../../lib/telemetry";
 import { env } from "cloudflare:workers";
 import { and, eq } from "drizzle-orm";
 import { canAccessBlob } from "../../db/queries";
@@ -18,13 +18,13 @@ export const Route = createFileRoute("/api/ingest")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        return Sentry.startSpan({ name: "ingest.transcript", op: "http.server" }, async () => {
+        return telemetry.startSpan({ name: "ingest.transcript", op: "http.server" }, async () => {
           const db = createDrizzle(env.DB);
           const auth = createAuth();
 
           logger.debug("Ingest request received");
 
-          const session = await Sentry.startSpan({ name: "auth.getSession", op: "auth" }, () =>
+          const session = await telemetry.startSpan({ name: "auth.getSession", op: "auth" }, () =>
             auth.api.getSession({ headers: request.headers }),
           );
 
@@ -43,7 +43,7 @@ export const Route = createFileRoute("/api/ingest")({
             });
             return json({ error: "Unauthorized" }, { status: 401 });
           }
-          Sentry.setUser({ id: userId });
+          telemetry.setUser({ id: userId });
 
           // Parse multipart form data (raw transcript upload)
           const formData = await request.formData();
@@ -75,7 +75,7 @@ export const Route = createFileRoute("/api/ingest")({
             typeof transcriptPart === "string" ? transcriptPart : await (transcriptPart as File).text();
 
           // Validate hash against unified transcript (not raw) so conversion changes are detected
-          const hashValid = await Sentry.startSpan({ name: "validate.hash", op: "validation" }, async () => {
+          const hashValid = await telemetry.startSpan({ name: "validate.hash", op: "validation" }, async () => {
             const computedHash = await sha256Hex(unifiedTranscriptField);
             return computedHash === sha256;
           });
@@ -98,7 +98,7 @@ export const Route = createFileRoute("/api/ingest")({
           }
 
           // Validate unified transcript with Zod schema
-          const unifiedTranscript = Sentry.startSpan({ name: "validate.schema", op: "validation" }, () => {
+          const unifiedTranscript = telemetry.startSpan({ name: "validate.schema", op: "validation" }, () => {
             return unifiedTranscriptSchema.parse(parsedTranscript);
           });
 
@@ -197,27 +197,30 @@ export const Route = createFileRoute("/api/ingest")({
           });
 
           // Check if transcript already exists with same sha256
-          const existingTranscript = await Sentry.startSpan({ name: "db.checkDuplicate", op: "db.query" }, async () => {
-            if (repoId) {
-              return db.query.repos.findFirst({
-                where: eq(repos.repo, repoId),
-                with: {
-                  transcripts: {
-                    where: and(eq(transcripts.transcriptId, transcriptId), eq(transcripts.userId, userId)),
+          const existingTranscript = await telemetry.startSpan(
+            { name: "db.checkDuplicate", op: "db.query" },
+            async () => {
+              if (repoId) {
+                return db.query.repos.findFirst({
+                  where: eq(repos.repo, repoId),
+                  with: {
+                    transcripts: {
+                      where: and(eq(transcripts.transcriptId, transcriptId), eq(transcripts.userId, userId)),
+                    },
                   },
-                },
-              });
-            } else {
-              // For private transcripts (no repo), check by transcriptId and userId only
-              const existingPrivateTranscript = await db.query.transcripts.findFirst({
-                where: and(eq(transcripts.transcriptId, transcriptId), eq(transcripts.userId, userId)),
-              });
-              if (existingPrivateTranscript) {
-                return { transcripts: [existingPrivateTranscript] };
+                });
+              } else {
+                // For private transcripts (no repo), check by transcriptId and userId only
+                const existingPrivateTranscript = await db.query.transcripts.findFirst({
+                  where: and(eq(transcripts.transcriptId, transcriptId), eq(transcripts.userId, userId)),
+                });
+                if (existingPrivateTranscript) {
+                  return { transcripts: [existingPrivateTranscript] };
+                }
+                return undefined;
               }
-              return undefined;
-            }
-          });
+            },
+          );
 
           // If transcript exists and SHA-256 matches, return OK
           if (existingTranscript?.transcripts?.[0] && existingTranscript.transcripts[0].sha256 === sha256) {
@@ -252,7 +255,7 @@ export const Route = createFileRoute("/api/ingest")({
           // Create or get repo record (only if repoId is provided)
           let repoDbId: string | null = null;
           if (repoId) {
-            const repoRecord = await Sentry.startSpan({ name: "db.upsertRepo", op: "db.query" }, () =>
+            const repoRecord = await telemetry.startSpan({ name: "db.upsertRepo", op: "db.query" }, () =>
               db
                 .insert(repos)
                 .values({
@@ -340,7 +343,7 @@ export const Route = createFileRoute("/api/ingest")({
           // Start summary generation in parallel (if needed)
           const needsSummaryGeneration = !existingSummary && unifiedTranscript.preview;
           const summaryPromise = needsSummaryGeneration
-            ? Sentry.startSpan({ name: "ai.generateSummary", op: "ai.run" }, () =>
+            ? telemetry.startSpan({ name: "ai.generateSummary", op: "ai.run" }, () =>
                 generateSummary(unifiedTranscript.preview!)
                   .then((result) => {
                     logger.info("Generated summary", { transcriptId, summary: result.summary });
@@ -358,7 +361,7 @@ export const Route = createFileRoute("/api/ingest")({
 
           // Upload unified transcript to R2
           const unifiedJson = JSON.stringify(unifiedTranscript);
-          const r2UploadsPromise = Sentry.startSpan({ name: "r2.uploadTranscript", op: "file.write" }, async () => {
+          const r2UploadsPromise = telemetry.startSpan({ name: "r2.uploadTranscript", op: "file.write" }, async () => {
             await r2Bucket.put(`${r2KeyPrefix}.json`, unifiedJson, {
               httpMetadata: { contentType: "application/json" },
             });
@@ -371,7 +374,7 @@ export const Route = createFileRoute("/api/ingest")({
           // Upload validated blobs to R2 in parallel
           const blobUploadsPromise =
             validatedBlobs.length > 0
-              ? Sentry.startSpan({ name: "r2.uploadBlobs", op: "file.write" }, () =>
+              ? telemetry.startSpan({ name: "r2.uploadBlobs", op: "file.write" }, () =>
                   Promise.all(
                     validatedBlobs.map(async ({ sha256: blobSha256, data, mediaType }) => {
                       const r2Key = `blobs/${blobSha256}`;
@@ -432,7 +435,7 @@ export const Route = createFileRoute("/api/ingest")({
 
           // Insert transcript with summary and visibility included
           // Use client-provided ID if available, otherwise let the database generate one
-          const insertedTranscript = await Sentry.startSpan({ name: "db.insertTranscript", op: "db.query" }, () =>
+          const insertedTranscript = await telemetry.startSpan({ name: "db.insertTranscript", op: "db.query" }, () =>
             db
               .insert(transcripts)
               .values({
@@ -463,7 +466,7 @@ export const Route = createFileRoute("/api/ingest")({
 
           // Link blobs to transcript (after transcript insert)
           if (validatedBlobs.length > 0) {
-            await Sentry.startSpan({ name: "db.linkBlobs", op: "db.query" }, async () => {
+            await telemetry.startSpan({ name: "db.linkBlobs", op: "db.query" }, async () => {
               for (const { sha256: blobSha256, mediaType, size } of validatedBlobs) {
                 await db.insert(blobs).values({ sha256: blobSha256, mediaType, size }).onConflictDoNothing();
                 await db
@@ -477,7 +480,7 @@ export const Route = createFileRoute("/api/ingest")({
 
           // Track successful ingestion
           const status = existingTranscript ? "updated" : "created";
-          Sentry.metrics.count("ingest.transcript", 1, {
+          telemetry.metrics.count("ingest.transcript", 1, {
             attributes: { source, status },
           });
 
