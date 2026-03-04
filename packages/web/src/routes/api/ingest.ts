@@ -3,7 +3,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
 import type { TranscriptSource } from "@agentlogs/shared";
 import { unifiedTranscriptSchema } from "@agentlogs/shared/schemas";
-import * as telemetry from "../../lib/telemetry";
 import { env } from "cloudflare:workers";
 import { and, eq } from "drizzle-orm";
 import { canAccessBlob } from "../../db/queries";
@@ -18,480 +17,452 @@ export const Route = createFileRoute("/api/ingest")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        return telemetry.startSpan({ name: "ingest.transcript", op: "http.server" }, async () => {
-          const db = createDrizzle(env.DB);
-          const auth = createAuth();
+        const db = createDrizzle(env.DB);
+        const auth = createAuth();
 
-          logger.debug("Ingest request received");
+        logger.debug("Ingest request received");
 
-          const session = await telemetry.startSpan({ name: "auth.getSession", op: "auth" }, () =>
-            auth.api.getSession({ headers: request.headers }),
-          );
+        const session = await auth.api.getSession({ headers: request.headers });
 
-          let userId: string;
-          try {
-            const activeUser = await requireActiveUserFromSession(session, db);
-            userId = activeUser.userId;
-          } catch (error) {
-            const authError = getAuthErrorResponse(error);
-            if (authError) {
-              logger.warn("Ingest auth failed", { status: authError.status, error: authError.message });
-              return json({ error: authError.message }, { status: authError.status });
-            }
-            logger.error("Ingest auth failed: unexpected error", {
-              error: error instanceof Error ? error.message : String(error),
-            });
-            return json({ error: "Unauthorized" }, { status: 401 });
+        let userId: string;
+        try {
+          const activeUser = await requireActiveUserFromSession(session, db);
+          userId = activeUser.userId;
+        } catch (error) {
+          const authError = getAuthErrorResponse(error);
+          if (authError) {
+            logger.warn("Ingest auth failed", { status: authError.status, error: authError.message });
+            return json({ error: authError.message }, { status: authError.status });
           }
-          telemetry.setUser({ id: userId });
+          logger.error("Ingest auth failed: unexpected error", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return json({ error: "Unauthorized" }, { status: 401 });
+        }
+        // Parse multipart form data (raw transcript upload)
+        const formData = await request.formData();
+        const clientId = formData.get("id");
+        const sha256 = formData.get("sha256");
+        const transcriptPart = formData.get("transcript");
+        const unifiedTranscriptField = formData.get("unifiedTranscript");
 
-          // Parse multipart form data (raw transcript upload)
-          const formData = await request.formData();
-          const clientId = formData.get("id");
-          const sha256 = formData.get("sha256");
-          const transcriptPart = formData.get("transcript");
-          const unifiedTranscriptField = formData.get("unifiedTranscript");
+        if (typeof sha256 !== "string" || !transcriptPart || typeof unifiedTranscriptField !== "string") {
+          logger.error("Ingest validation failed: missing required form fields", {
+            userId,
+            receivedKeys: Array.from(formData.keys()),
+          });
+          return json({ error: "Invalid form data" }, { status: 400 });
+        }
 
-          if (typeof sha256 !== "string" || !transcriptPart || typeof unifiedTranscriptField !== "string") {
-            logger.error("Ingest validation failed: missing required form fields", {
-              userId,
-              receivedKeys: Array.from(formData.keys()),
-            });
-            return json({ error: "Invalid form data" }, { status: 400 });
-          }
+        // clientId is optional for backwards compatibility
+        const providedId = typeof clientId === "string" && clientId.length > 0 ? clientId : null;
 
-          // clientId is optional for backwards compatibility
-          const providedId = typeof clientId === "string" && clientId.length > 0 ? clientId : null;
+        // Visibility override from client (if user configured it for this repo)
+        const visibilityOverride = formData.get("visibility");
+        const clientVisibility =
+          typeof visibilityOverride === "string" &&
+          (visibilityOverride === "private" || visibilityOverride === "team" || visibilityOverride === "public")
+            ? (visibilityOverride as VisibilityOption)
+            : null;
 
-          // Visibility override from client (if user configured it for this repo)
-          const visibilityOverride = formData.get("visibility");
-          const clientVisibility =
-            typeof visibilityOverride === "string" &&
-            (visibilityOverride === "private" || visibilityOverride === "team" || visibilityOverride === "public")
-              ? (visibilityOverride as VisibilityOption)
-              : null;
+        const transcriptContent =
+          typeof transcriptPart === "string" ? transcriptPart : await (transcriptPart as File).text();
 
-          const transcriptContent =
-            typeof transcriptPart === "string" ? transcriptPart : await (transcriptPart as File).text();
+        // Validate hash against unified transcript (not raw) so conversion changes are detected
+        const computedHash = await sha256Hex(unifiedTranscriptField);
+        const hashValid = computedHash === sha256;
 
-          // Validate hash against unified transcript (not raw) so conversion changes are detected
-          const hashValid = await telemetry.startSpan({ name: "validate.hash", op: "validation" }, async () => {
-            const computedHash = await sha256Hex(unifiedTranscriptField);
-            return computedHash === sha256;
+        if (!hashValid) {
+          logger.warn("Ingest hash mismatch", { userId, expected: sha256 });
+          return json({ error: "Transcript hash mismatch" }, { status: 400 });
+        }
+
+        // Parse and validate the unified transcript sent by the client
+        let parsedTranscript: unknown;
+        try {
+          parsedTranscript = JSON.parse(unifiedTranscriptField);
+        } catch (error) {
+          logger.error("Ingest validation failed: could not parse unified transcript", {
+            userId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return json({ error: "Invalid unified transcript JSON" }, { status: 400 });
+        }
+
+        // Validate unified transcript with Zod schema
+        const unifiedTranscript = unifiedTranscriptSchema.parse(parsedTranscript);
+
+        // Extract fields from unifiedTranscript
+        const transcriptId = unifiedTranscript.id;
+        const repoId = unifiedTranscript.git?.repo ?? null;
+        const source: TranscriptSource =
+          unifiedTranscript.source === "codex" || unifiedTranscript.source === "claude-code"
+            ? unifiedTranscript.source
+            : "claude-code";
+        const cwd = unifiedTranscript.cwd ?? "";
+
+        // Validate client-provided ID if present
+        if (providedId) {
+          const existingById = await db.query.transcripts.findFirst({
+            where: eq(transcripts.id, providedId),
+            columns: { id: true, userId: true, transcriptId: true },
           });
 
-          if (!hashValid) {
-            logger.warn("Ingest hash mismatch", { userId, expected: sha256 });
-            return json({ error: "Transcript hash mismatch" }, { status: 400 });
-          }
-
-          // Parse and validate the unified transcript sent by the client
-          let parsedTranscript: unknown;
-          try {
-            parsedTranscript = JSON.parse(unifiedTranscriptField);
-          } catch (error) {
-            logger.error("Ingest validation failed: could not parse unified transcript", {
-              userId,
-              error: error instanceof Error ? error.message : String(error),
-            });
-            return json({ error: "Invalid unified transcript JSON" }, { status: 400 });
-          }
-
-          // Validate unified transcript with Zod schema
-          const unifiedTranscript = telemetry.startSpan({ name: "validate.schema", op: "validation" }, () => {
-            return unifiedTranscriptSchema.parse(parsedTranscript);
-          });
-
-          // Extract fields from unifiedTranscript
-          const transcriptId = unifiedTranscript.id;
-          const repoId = unifiedTranscript.git?.repo ?? null;
-          const source: TranscriptSource =
-            unifiedTranscript.source === "codex" || unifiedTranscript.source === "claude-code"
-              ? unifiedTranscript.source
-              : "claude-code";
-          const cwd = unifiedTranscript.cwd ?? "";
-
-          // Validate client-provided ID if present
-          if (providedId) {
-            const existingById = await db.query.transcripts.findFirst({
-              where: eq(transcripts.id, providedId),
-              columns: { id: true, userId: true, transcriptId: true },
-            });
-
-            if (existingById) {
-              // Record exists with this ID - validate ownership and transcriptId
-              if (existingById.userId !== userId) {
-                logger.warn("Ingest rejected: ID belongs to another user", {
-                  userId,
-                  providedId,
-                  existingUserId: existingById.userId,
-                });
-                return json({ error: "Forbidden: ID belongs to another user" }, { status: 403 });
-              }
-              if (existingById.transcriptId !== transcriptId) {
-                logger.warn("Ingest rejected: ID/transcriptId mismatch", {
-                  userId,
-                  providedId,
-                  existingTranscriptId: existingById.transcriptId,
-                  providedTranscriptId: transcriptId,
-                });
-                return json({ error: "Bad Request: ID does not match transcriptId" }, { status: 400 });
-              }
-              // Ownership and transcriptId verified - will proceed with upsert
-            } else {
-              // No record with this ID - check if transcriptId already exists for this user
-              const existingByTranscriptId = await db.query.transcripts.findFirst({
-                where: and(eq(transcripts.transcriptId, transcriptId), eq(transcripts.userId, userId)),
-                columns: { id: true },
+          if (existingById) {
+            // Record exists with this ID - validate ownership and transcriptId
+            if (existingById.userId !== userId) {
+              logger.warn("Ingest rejected: ID belongs to another user", {
+                userId,
+                providedId,
+                existingUserId: existingById.userId,
               });
-
-              if (existingByTranscriptId) {
-                // Client lost local DB - return existing ID for caching
-                logger.info("Ingest: returning existing ID (client lost local DB)", {
-                  userId,
-                  transcriptId,
-                  existingId: existingByTranscriptId.id,
-                  providedId,
-                });
-                return json({
-                  success: true,
-                  id: existingByTranscriptId.id,
-                  transcriptId,
-                  eventsReceived: 0,
-                  sha256,
-                  status: "exists",
-                });
-              }
-              // New transcript - will create with client-provided ID
+              return json({ error: "Forbidden: ID belongs to another user" }, { status: 403 });
             }
+            if (existingById.transcriptId !== transcriptId) {
+              logger.warn("Ingest rejected: ID/transcriptId mismatch", {
+                userId,
+                providedId,
+                existingTranscriptId: existingById.transcriptId,
+                providedTranscriptId: transcriptId,
+              });
+              return json({ error: "Bad Request: ID does not match transcriptId" }, { status: 400 });
+            }
+            // Ownership and transcriptId verified - will proceed with upsert
+          } else {
+            // No record with this ID - check if transcriptId already exists for this user
+            const existingByTranscriptId = await db.query.transcripts.findFirst({
+              where: and(eq(transcripts.transcriptId, transcriptId), eq(transcripts.userId, userId)),
+              columns: { id: true },
+            });
+
+            if (existingByTranscriptId) {
+              // Client lost local DB - return existing ID for caching
+              logger.info("Ingest: returning existing ID (client lost local DB)", {
+                userId,
+                transcriptId,
+                existingId: existingByTranscriptId.id,
+                providedId,
+              });
+              return json({
+                success: true,
+                id: existingByTranscriptId.id,
+                transcriptId,
+                eventsReceived: 0,
+                sha256,
+                status: "exists",
+              });
+            }
+            // New transcript - will create with client-provided ID
           }
+        }
 
-          const rawRecords = parseJsonlRecords(transcriptContent);
+        const rawRecords = parseJsonlRecords(transcriptContent);
 
-          logger.debug("Ingest unified transcript payload", {
-            userId,
-            repoId,
-            transcriptId: unifiedTranscript.id,
-            source,
-            unifiedTranscript,
-          });
+        logger.debug("Ingest unified transcript payload", {
+          userId,
+          repoId,
+          transcriptId: unifiedTranscript.id,
+          source,
+          unifiedTranscript,
+        });
 
-          const eventCount = rawRecords.length;
-          const repoName = repoId ? deriveRepoName(repoId) : null;
+        const eventCount = rawRecords.length;
+        const repoName = repoId ? deriveRepoName(repoId) : null;
 
-          logger.debug("Ingest raw transcript parsed", {
-            userId,
-            repoId,
-            cwd,
-            sample: rawRecords.slice(0, 3),
-          });
+        logger.debug("Ingest raw transcript parsed", {
+          userId,
+          repoId,
+          cwd,
+          sample: rawRecords.slice(0, 3),
+        });
 
-          logger.info("Ingest unified transcript generated", {
-            userId,
-            repoId,
-            cwd,
-            transcriptId: unifiedTranscript.id,
-            source,
-            preview: unifiedTranscript.preview,
-            messageCount: unifiedTranscript.messageCount,
-          });
+        logger.info("Ingest unified transcript generated", {
+          userId,
+          repoId,
+          cwd,
+          transcriptId: unifiedTranscript.id,
+          source,
+          preview: unifiedTranscript.preview,
+          messageCount: unifiedTranscript.messageCount,
+        });
 
-          // Check if transcript already exists with same sha256
-          const existingTranscript = await telemetry.startSpan(
-            { name: "db.checkDuplicate", op: "db.query" },
-            async () => {
-              if (repoId) {
-                return db.query.repos.findFirst({
-                  where: eq(repos.repo, repoId),
-                  with: {
-                    transcripts: {
-                      where: and(eq(transcripts.transcriptId, transcriptId), eq(transcripts.userId, userId)),
-                    },
-                  },
-                });
-              } else {
-                // For private transcripts (no repo), check by transcriptId and userId only
-                const existingPrivateTranscript = await db.query.transcripts.findFirst({
+        // Check if transcript already exists with same sha256
+        const existingTranscript = repoId
+          ? await db.query.repos.findFirst({
+              where: eq(repos.repo, repoId),
+              with: {
+                transcripts: {
                   where: and(eq(transcripts.transcriptId, transcriptId), eq(transcripts.userId, userId)),
-                });
-                if (existingPrivateTranscript) {
-                  return { transcripts: [existingPrivateTranscript] };
-                }
-                return undefined;
+                },
+              },
+            })
+          : await (async () => {
+              // For private transcripts (no repo), check by transcriptId and userId only
+              const existingPrivateTranscript = await db.query.transcripts.findFirst({
+                where: and(eq(transcripts.transcriptId, transcriptId), eq(transcripts.userId, userId)),
+              });
+              if (existingPrivateTranscript) {
+                return { transcripts: [existingPrivateTranscript] };
               }
-            },
-          );
+              return undefined;
+            })();
 
-          // If transcript exists and SHA-256 matches, return OK
-          if (existingTranscript?.transcripts?.[0] && existingTranscript.transcripts[0].sha256 === sha256) {
-            logger.info("Ingest skipped: transcript exists with same sha256", {
-              userId,
-              repoId,
-              cwd,
-              transcriptId,
-              source,
-              sha256,
-            });
-            return json({
-              success: true,
-              id: existingTranscript.transcripts[0].id,
-              transcriptId,
-              eventsReceived: eventCount,
-              sha256,
-              status: "unchanged",
-            });
-          }
-
-          logger.info("Ingest processing", {
+        // If transcript exists and SHA-256 matches, return OK
+        if (existingTranscript?.transcripts?.[0] && existingTranscript.transcripts[0].sha256 === sha256) {
+          logger.info("Ingest skipped: transcript exists with same sha256", {
             userId,
             repoId,
             cwd,
-            repoName,
             transcriptId,
-            eventCount,
+            source,
             sha256,
           });
-
-          // Create or get repo record (only if repoId is provided)
-          let repoDbId: string | null = null;
-          if (repoId) {
-            const repoRecord = await telemetry.startSpan({ name: "db.upsertRepo", op: "db.query" }, () =>
-              db
-                .insert(repos)
-                .values({
-                  repo: repoId,
-                  lastActivity: new Date().toISOString(),
-                })
-                .onConflictDoUpdate({
-                  target: repos.repo,
-                  set: {
-                    lastActivity: new Date().toISOString(),
-                  },
-                })
-                .returning({ id: repos.id }),
-            );
-
-            repoDbId = repoRecord[0].id;
-          }
-
-          // Compute metadata from unified transcript
-          // Use cwd from form data (already formatted by CLI) not from re-converted transcript
-          // because backend might be in different environment (e.g., Cloudflare Workers)
-          const existingSummary = existingTranscript?.transcripts?.[0]?.summary ?? null;
-
-          // Process blobs (validate SHA256 before any uploads)
-          const blobEntries = [...formData.entries()]
-            .filter(([key, value]) => key.startsWith("blob:") && typeof value !== "string")
-            .map(([key, value]) => ({
-              sha256: key.slice(5), // Remove "blob:" prefix
-              blob: value as unknown as File,
-            }));
-
-          // Validate all blob SHA256s first (can't do this in parallel since we need to fail fast)
-          const validatedBlobs: Array<{ sha256: string; data: ArrayBuffer; mediaType: string; size: number }> = [];
-          for (const { sha256: claimedSha256, blob } of blobEntries) {
-            const blobData = await blob.arrayBuffer();
-            const actualSha256 = await sha256HexBuffer(blobData);
-            if (actualSha256 !== claimedSha256) {
-              logger.warn("Blob SHA256 mismatch", {
-                userId,
-                transcriptId,
-                claimed: claimedSha256,
-                actual: actualSha256,
-              });
-              return json(
-                { error: `Blob SHA256 mismatch: claimed ${claimedSha256}, actual ${actualSha256}` },
-                { status: 400 },
-              );
-            }
-            validatedBlobs.push({
-              sha256: actualSha256,
-              data: blobData,
-              mediaType: blob.type || "application/octet-stream",
-              size: blob.size,
-            });
-          }
-
-          // Validate that all referenced blobs are either uploaded or already accessible
-          // This prevents users from referencing blobs they don't have access to
-          const referencedSha256s = extractBlobReferences(unifiedTranscript);
-          const uploadedSha256s = new Set(validatedBlobs.map((b) => b.sha256));
-
-          for (const sha256 of referencedSha256s) {
-            if (!uploadedSha256s.has(sha256)) {
-              // Blob not uploaded in this request - must have existing access
-              const hasAccess = await canAccessBlob(db, userId, sha256);
-              if (!hasAccess) {
-                logger.warn("Blob access denied: referenced blob not uploaded and not accessible", {
-                  userId,
-                  transcriptId,
-                  sha256: sha256.slice(0, 8),
-                });
-                return json(
-                  { error: `Access denied: you must upload blob ${sha256.slice(0, 8)}... to reference it` },
-                  { status: 403 },
-                );
-              }
-            }
-          }
-
-          // All validations passed - now start uploads to R2
-          const r2Bucket = env.BUCKET;
-          // For private transcripts (no repo), use "private/<userId>" as prefix
-          const r2KeyPrefix = repoId ? `${repoId}/${transcriptId}` : `private/${userId}/${transcriptId}`;
-
-          // Start summary generation in parallel (if needed)
-          const needsSummaryGeneration = !existingSummary && unifiedTranscript.preview;
-          const summaryPromise = needsSummaryGeneration
-            ? telemetry.startSpan({ name: "ai.generateSummary", op: "ai.run" }, () =>
-                generateSummary(unifiedTranscript.preview!)
-                  .then((result) => {
-                    logger.info("Generated summary", { transcriptId, summary: result.summary });
-                    return result.summary;
-                  })
-                  .catch((error) => {
-                    logger.error("Failed to generate summary", {
-                      transcriptId,
-                      error: error instanceof Error ? error.message : String(error),
-                    });
-                    return null;
-                  }),
-              )
-            : Promise.resolve(existingSummary);
-
-          // Upload unified transcript to R2
-          const unifiedJson = JSON.stringify(unifiedTranscript);
-          const r2UploadsPromise = telemetry.startSpan({ name: "r2.uploadTranscript", op: "file.write" }, async () => {
-            await r2Bucket.put(`${r2KeyPrefix}.json`, unifiedJson, {
-              httpMetadata: { contentType: "application/json" },
-            });
-            logger.debug("Uploaded unified transcript to R2", {
-              key: r2KeyPrefix,
-              unifiedSize: unifiedJson.length,
-            });
-          });
-
-          // Upload validated blobs to R2 in parallel
-          const blobUploadsPromise =
-            validatedBlobs.length > 0
-              ? telemetry.startSpan({ name: "r2.uploadBlobs", op: "file.write" }, () =>
-                  Promise.all(
-                    validatedBlobs.map(async ({ sha256: blobSha256, data, mediaType }) => {
-                      const r2Key = `blobs/${blobSha256}`;
-                      const existing = await r2Bucket.head(r2Key);
-                      if (!existing) {
-                        await r2Bucket.put(r2Key, data, { httpMetadata: { contentType: mediaType } });
-                        logger.debug("Uploaded blob to R2", { key: r2Key, size: data.byteLength });
-                      }
-                    }),
-                  ),
-                )
-              : Promise.resolve();
-
-          // Wait for summary and R2 uploads to complete
-          const [summary] = await Promise.all([summaryPromise, r2UploadsPromise, blobUploadsPromise]);
-
-          // Determine visibility: client override takes precedence, otherwise use default logic
-          // Skip expensive default logic if client provided visibility
-          const finalVisibility: DefaultSharingSettings = clientVisibility
-            ? { visibility: clientVisibility, sharedWithTeamId: null }
-            : await getDefaultVisibility(db, repoDbId, repoId, userId);
-
-          // Extract first image for preview thumbnail (from user message or tool-call)
-          const firstMessageWithImage = unifiedTranscript.messages.find(
-            (m) => (m.type === "user" || m.type === "tool-call") && m.images && m.images.length > 0,
-          );
-          const previewBlobSha256 =
-            firstMessageWithImage && "images" in firstMessageWithImage
-              ? (firstMessageWithImage.images?.[0]?.sha256 ?? null)
-              : null;
-
-          const metadata = {
-            preview: unifiedTranscript.preview,
-            previewBlobSha256,
-            summary,
-            model: unifiedTranscript.model,
-            clientVersion: unifiedTranscript.clientVersion,
-            costUsd: unifiedTranscript.costUsd,
-            blendedTokens: unifiedTranscript.blendedTokens,
-            messageCount: unifiedTranscript.messageCount,
-            toolCount: unifiedTranscript.toolCount,
-            userMessageCount: unifiedTranscript.userMessageCount,
-            filesChanged: unifiedTranscript.filesChanged,
-            linesAdded: unifiedTranscript.linesAdded,
-            linesRemoved: unifiedTranscript.linesRemoved,
-            linesModified: unifiedTranscript.linesModified,
-            transcriptVersion: unifiedTranscript.v,
-            inputTokens: unifiedTranscript.tokenUsage.inputTokens,
-            cachedInputTokens: unifiedTranscript.tokenUsage.cachedInputTokens,
-            outputTokens: unifiedTranscript.tokenUsage.outputTokens,
-            reasoningOutputTokens: unifiedTranscript.tokenUsage.reasoningOutputTokens,
-            totalTokens: unifiedTranscript.tokenUsage.totalTokens,
-            relativeCwd: unifiedTranscript.git?.relativeCwd ?? null,
-            branch: unifiedTranscript.git?.branch ?? null,
-            cwd: cwd ?? "",
-            createdAt: unifiedTranscript.timestamp,
-          };
-
-          // Insert transcript with summary and visibility included
-          // Use client-provided ID if available, otherwise let the database generate one
-          const insertedTranscript = await telemetry.startSpan({ name: "db.insertTranscript", op: "db.query" }, () =>
-            db
-              .insert(transcripts)
-              .values({
-                ...(providedId ? { id: providedId } : {}),
-                repoId: repoDbId,
-                userId,
-                sha256,
-                transcriptId,
-                source: unifiedTranscript.source,
-                visibility: finalVisibility.visibility,
-                sharedWithTeamId: finalVisibility.sharedWithTeamId,
-                ...metadata,
-              })
-              .onConflictDoUpdate({
-                target: [transcripts.userId, transcripts.transcriptId],
-                set: {
-                  sha256,
-                  repoId: repoDbId,
-                  // Note: visibility is only set on creation, not on update
-                  // User can change it manually in the UI
-                  ...metadata,
-                },
-              })
-              .returning({ id: transcripts.id }),
-          );
-
-          const transcriptDbId = insertedTranscript[0].id;
-
-          // Link blobs to transcript (after transcript insert)
-          if (validatedBlobs.length > 0) {
-            await telemetry.startSpan({ name: "db.linkBlobs", op: "db.query" }, async () => {
-              for (const { sha256: blobSha256, mediaType, size } of validatedBlobs) {
-                await db.insert(blobs).values({ sha256: blobSha256, mediaType, size }).onConflictDoNothing();
-                await db
-                  .insert(transcriptBlobs)
-                  .values({ transcriptId: transcriptDbId, sha256: blobSha256 })
-                  .onConflictDoNothing();
-              }
-            });
-            logger.info("Linked blobs to transcript", { transcriptId, blobCount: validatedBlobs.length });
-          }
-
-          // Track successful ingestion
-          const status = existingTranscript ? "updated" : "created";
-          telemetry.metrics.count("ingest.transcript", 1, {
-            attributes: { source, status },
-          });
-
           return json({
             success: true,
-            id: transcriptDbId,
+            id: existingTranscript.transcripts[0].id,
             transcriptId,
             eventsReceived: eventCount,
             sha256,
-            status,
+            status: "unchanged",
           });
+        }
+
+        logger.info("Ingest processing", {
+          userId,
+          repoId,
+          cwd,
+          repoName,
+          transcriptId,
+          eventCount,
+          sha256,
+        });
+
+        // Create or get repo record (only if repoId is provided)
+        let repoDbId: string | null = null;
+        if (repoId) {
+          const repoRecord = await db
+            .insert(repos)
+            .values({
+              repo: repoId,
+              lastActivity: new Date().toISOString(),
+            })
+            .onConflictDoUpdate({
+              target: repos.repo,
+              set: {
+                lastActivity: new Date().toISOString(),
+              },
+            })
+            .returning({ id: repos.id });
+
+          repoDbId = repoRecord[0].id;
+        }
+
+        // Compute metadata from unified transcript
+        // Use cwd from form data (already formatted by CLI) not from re-converted transcript
+        // because backend might be in different environment (e.g., Cloudflare Workers)
+        const existingSummary = existingTranscript?.transcripts?.[0]?.summary ?? null;
+
+        // Process blobs (validate SHA256 before any uploads)
+        const blobEntries = [...formData.entries()]
+          .filter(([key, value]) => key.startsWith("blob:") && typeof value !== "string")
+          .map(([key, value]) => ({
+            sha256: key.slice(5), // Remove "blob:" prefix
+            blob: value as unknown as File,
+          }));
+
+        // Validate all blob SHA256s first (can't do this in parallel since we need to fail fast)
+        const validatedBlobs: Array<{ sha256: string; data: ArrayBuffer; mediaType: string; size: number }> = [];
+        for (const { sha256: claimedSha256, blob } of blobEntries) {
+          const blobData = await blob.arrayBuffer();
+          const actualSha256 = await sha256HexBuffer(blobData);
+          if (actualSha256 !== claimedSha256) {
+            logger.warn("Blob SHA256 mismatch", {
+              userId,
+              transcriptId,
+              claimed: claimedSha256,
+              actual: actualSha256,
+            });
+            return json(
+              { error: `Blob SHA256 mismatch: claimed ${claimedSha256}, actual ${actualSha256}` },
+              { status: 400 },
+            );
+          }
+          validatedBlobs.push({
+            sha256: actualSha256,
+            data: blobData,
+            mediaType: blob.type || "application/octet-stream",
+            size: blob.size,
+          });
+        }
+
+        // Validate that all referenced blobs are either uploaded or already accessible
+        // This prevents users from referencing blobs they don't have access to
+        const referencedSha256s = extractBlobReferences(unifiedTranscript);
+        const uploadedSha256s = new Set(validatedBlobs.map((b) => b.sha256));
+
+        for (const sha256 of referencedSha256s) {
+          if (!uploadedSha256s.has(sha256)) {
+            // Blob not uploaded in this request - must have existing access
+            const hasAccess = await canAccessBlob(db, userId, sha256);
+            if (!hasAccess) {
+              logger.warn("Blob access denied: referenced blob not uploaded and not accessible", {
+                userId,
+                transcriptId,
+                sha256: sha256.slice(0, 8),
+              });
+              return json(
+                { error: `Access denied: you must upload blob ${sha256.slice(0, 8)}... to reference it` },
+                { status: 403 },
+              );
+            }
+          }
+        }
+
+        // All validations passed - now start uploads to R2
+        const r2Bucket = env.BUCKET;
+        // For private transcripts (no repo), use "private/<userId>" as prefix
+        const r2KeyPrefix = repoId ? `${repoId}/${transcriptId}` : `private/${userId}/${transcriptId}`;
+
+        // Start summary generation in parallel (if needed)
+        const needsSummaryGeneration = !existingSummary && unifiedTranscript.preview;
+        const summaryPromise = needsSummaryGeneration
+          ? generateSummary(unifiedTranscript.preview!)
+              .then((result) => {
+                logger.info("Generated summary", { transcriptId, summary: result.summary });
+                return result.summary;
+              })
+              .catch((error) => {
+                logger.error("Failed to generate summary", {
+                  transcriptId,
+                  error: error instanceof Error ? error.message : String(error),
+                });
+                return null;
+              })
+          : Promise.resolve(existingSummary);
+
+        // Upload unified transcript to R2
+        const unifiedJson = JSON.stringify(unifiedTranscript);
+        const r2UploadsPromise = (async () => {
+          await r2Bucket.put(`${r2KeyPrefix}.json`, unifiedJson, {
+            httpMetadata: { contentType: "application/json" },
+          });
+          logger.debug("Uploaded unified transcript to R2", {
+            key: r2KeyPrefix,
+            unifiedSize: unifiedJson.length,
+          });
+        })();
+
+        // Upload validated blobs to R2 in parallel
+        const blobUploadsPromise =
+          validatedBlobs.length > 0
+            ? Promise.all(
+                validatedBlobs.map(async ({ sha256: blobSha256, data, mediaType }) => {
+                  const r2Key = `blobs/${blobSha256}`;
+                  const existing = await r2Bucket.head(r2Key);
+                  if (!existing) {
+                    await r2Bucket.put(r2Key, data, { httpMetadata: { contentType: mediaType } });
+                    logger.debug("Uploaded blob to R2", { key: r2Key, size: data.byteLength });
+                  }
+                }),
+              )
+            : Promise.resolve();
+
+        // Wait for summary and R2 uploads to complete
+        const [summary] = await Promise.all([summaryPromise, r2UploadsPromise, blobUploadsPromise]);
+
+        // Determine visibility: client override takes precedence, otherwise use default logic
+        // Skip expensive default logic if client provided visibility
+        const finalVisibility: DefaultSharingSettings = clientVisibility
+          ? { visibility: clientVisibility, sharedWithTeamId: null }
+          : await getDefaultVisibility(db, repoDbId, repoId, userId);
+
+        // Extract first image for preview thumbnail (from user message or tool-call)
+        const firstMessageWithImage = unifiedTranscript.messages.find(
+          (m) => (m.type === "user" || m.type === "tool-call") && m.images && m.images.length > 0,
+        );
+        const previewBlobSha256 =
+          firstMessageWithImage && "images" in firstMessageWithImage
+            ? (firstMessageWithImage.images?.[0]?.sha256 ?? null)
+            : null;
+
+        const metadata = {
+          preview: unifiedTranscript.preview,
+          previewBlobSha256,
+          summary,
+          model: unifiedTranscript.model,
+          clientVersion: unifiedTranscript.clientVersion,
+          costUsd: unifiedTranscript.costUsd,
+          blendedTokens: unifiedTranscript.blendedTokens,
+          messageCount: unifiedTranscript.messageCount,
+          toolCount: unifiedTranscript.toolCount,
+          userMessageCount: unifiedTranscript.userMessageCount,
+          filesChanged: unifiedTranscript.filesChanged,
+          linesAdded: unifiedTranscript.linesAdded,
+          linesRemoved: unifiedTranscript.linesRemoved,
+          linesModified: unifiedTranscript.linesModified,
+          transcriptVersion: unifiedTranscript.v,
+          inputTokens: unifiedTranscript.tokenUsage.inputTokens,
+          cachedInputTokens: unifiedTranscript.tokenUsage.cachedInputTokens,
+          outputTokens: unifiedTranscript.tokenUsage.outputTokens,
+          reasoningOutputTokens: unifiedTranscript.tokenUsage.reasoningOutputTokens,
+          totalTokens: unifiedTranscript.tokenUsage.totalTokens,
+          relativeCwd: unifiedTranscript.git?.relativeCwd ?? null,
+          branch: unifiedTranscript.git?.branch ?? null,
+          cwd: cwd ?? "",
+          createdAt: unifiedTranscript.timestamp,
+        };
+
+        // Insert transcript with summary and visibility included
+        // Use client-provided ID if available, otherwise let the database generate one
+        const insertedTranscript = await db
+          .insert(transcripts)
+          .values({
+            ...(providedId ? { id: providedId } : {}),
+            repoId: repoDbId,
+            userId,
+            sha256,
+            transcriptId,
+            source: unifiedTranscript.source,
+            visibility: finalVisibility.visibility,
+            sharedWithTeamId: finalVisibility.sharedWithTeamId,
+            ...metadata,
+          })
+          .onConflictDoUpdate({
+            target: [transcripts.userId, transcripts.transcriptId],
+            set: {
+              sha256,
+              repoId: repoDbId,
+              // Note: visibility is only set on creation, not on update
+              // User can change it manually in the UI
+              ...metadata,
+            },
+          })
+          .returning({ id: transcripts.id });
+
+        const transcriptDbId = insertedTranscript[0].id;
+
+        // Link blobs to transcript (after transcript insert)
+        if (validatedBlobs.length > 0) {
+          for (const { sha256: blobSha256, mediaType, size } of validatedBlobs) {
+            await db.insert(blobs).values({ sha256: blobSha256, mediaType, size }).onConflictDoNothing();
+            await db
+              .insert(transcriptBlobs)
+              .values({ transcriptId: transcriptDbId, sha256: blobSha256 })
+              .onConflictDoNothing();
+          }
+          logger.info("Linked blobs to transcript", { transcriptId, blobCount: validatedBlobs.length });
+        }
+
+        // Track successful ingestion
+        const status = existingTranscript ? "updated" : "created";
+
+        return json({
+          success: true,
+          id: transcriptDbId,
+          transcriptId,
+          eventsReceived: eventCount,
+          sha256,
+          status,
         });
       },
     },
