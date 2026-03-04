@@ -1,8 +1,8 @@
 import { createDrizzle } from "@/db";
 import { createFileRoute } from "@tanstack/react-router";
 import { getModelDisplayName } from "@agentlogs/shared";
-import { env } from "cloudflare:workers";
-import { ImageResponse } from "workers-og";
+import { ImageResponse } from "@vercel/og";
+import { env } from "@/lib/env";
 import { getPublicTranscript } from "../../db/queries";
 import { logger } from "../../lib/logger";
 
@@ -379,8 +379,7 @@ export const Route = createFileRoute("/api/og/$id" as any)({
             createdAt: transcript.createdAt,
           };
 
-          // Fetch fonts from external CDN to avoid self-fetch timeout issues in Workers
-          // (fetching from own origin causes HTTP 522 timeouts)
+          // Fetch fonts from external CDN for stable rendering across runtimes.
           const [serifResponse, sansResponse] = await Promise.all([
             fetch("https://cdn.jsdelivr.net/fontsource/fonts/instrument-serif@latest/latin-400-normal.ttf"),
             fetch("https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-400-normal.ttf"),
@@ -396,7 +395,6 @@ export const Route = createFileRoute("/api/og/$id" as any)({
           const response = new ImageResponse(<OgImage data={data} />, {
             width: 1200,
             height: 630,
-            format: "png",
             fonts: [
               {
                 name: "Instrument Serif",
@@ -416,7 +414,6 @@ export const Route = createFileRoute("/api/og/$id" as any)({
           // Add aggressive caching headers
           response.headers.set("Cache-Control", CACHE_CONTROL);
           response.headers.set("CDN-Cache-Control", CACHE_CONTROL);
-          response.headers.set("Cloudflare-CDN-Cache-Control", CACHE_CONTROL);
 
           return response;
         } catch (error) {
@@ -432,6 +429,34 @@ export const Route = createFileRoute("/api/og/$id" as any)({
           }
 
           return new Response("Internal Server Error", { status: 500 });
+        }
+      },
+      HEAD: async ({ params }: { params: { id: string } }) => {
+        const id = params.id.replace(/\.png$/, "");
+
+        try {
+          const db = createDrizzle(env.DB);
+          const transcript = await getPublicTranscript(db, id);
+          if (!transcript) {
+            return new Response(null, {
+              status: 404,
+              headers: { "Cache-Control": "public, max-age=60" },
+            });
+          }
+
+          return new Response(null, {
+            status: 200,
+            headers: {
+              "Content-Type": "image/png",
+              "Cache-Control": CACHE_CONTROL,
+            },
+          });
+        } catch (error) {
+          logger.error("OG HEAD request failed", {
+            id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return new Response(null, { status: 500 });
         }
       },
     },
