@@ -1,7 +1,7 @@
 import { init } from "@paralleldrive/cuid2";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/env";
 import { and, eq, sql } from "drizzle-orm";
 import { createDrizzle } from "../db";
 import * as queries from "../db/queries";
@@ -545,17 +545,17 @@ export const createTeam = createServerFn({ method: "POST" })
     // Pre-generate ID since batch can't reference results between statements
     const teamId = generateId();
 
-    await db.batch([
-      db.insert(teams).values({
+    await db.transaction(async (tx) => {
+      await tx.insert(teams).values({
         id: teamId,
         name: teamName,
         ownerId: userId,
-      }),
-      db.insert(teamMembers).values({
+      });
+      await tx.insert(teamMembers).values({
         teamId: teamId,
         userId: userId,
-      }),
-    ]);
+      });
+    });
 
     logger.info("Team created", { teamId, ownerId: userId });
     return { id: teamId, name: teamName };
@@ -664,16 +664,19 @@ export const addMemberByEmail = createServerFn({ method: "POST" })
     }
 
     // Add member and upgrade from waitlist if needed
-    const insertMember = db.insert(teamMembers).values({ teamId, userId: targetUser.id });
     const targetRole = await queries.getUserRole(db, targetUser.id);
     if (targetRole === "waitlist") {
-      await db.batch([insertMember, db.update(user).set({ role: "user" }).where(eq(user.id, targetUser.id))]);
+      await db.transaction(async (tx) => {
+        await tx.insert(teamMembers).values({ teamId, userId: targetUser.id });
+        await tx.update(user).set({ role: "user" }).where(eq(user.id, targetUser.id));
+      });
       logger.info("Member added to team and upgraded from waitlist", {
         teamId,
         memberId: targetUser.id,
         addedBy: userId,
       });
     } else {
+      const insertMember = db.insert(teamMembers).values({ teamId, userId: targetUser.id });
       await insertMember;
       logger.info("Member added to team", { teamId, memberId: targetUser.id, addedBy: userId });
     }
@@ -816,16 +819,19 @@ export const acceptInvite = createServerFn({ method: "POST" })
     }
 
     // Add user to team and upgrade from waitlist if needed
-    const insertMember = db.insert(teamMembers).values({ teamId: invite.teamId, userId });
     const currentRole = await queries.getUserRole(db, userId);
     if (currentRole === "waitlist") {
-      await db.batch([insertMember, db.update(user).set({ role: "user" }).where(eq(user.id, userId))]);
+      await db.transaction(async (tx) => {
+        await tx.insert(teamMembers).values({ teamId: invite.teamId, userId });
+        await tx.update(user).set({ role: "user" }).where(eq(user.id, userId));
+      });
       logger.info("User joined team via invite and upgraded from waitlist", {
         teamId: invite.teamId,
         userId,
         code,
       });
     } else {
+      const insertMember = db.insert(teamMembers).values({ teamId: invite.teamId, userId });
       await insertMember;
       logger.info("User joined team via invite", { teamId: invite.teamId, userId, code });
     }

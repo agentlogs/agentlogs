@@ -2,48 +2,51 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { bearer, deviceAuthorization } from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/env";
 import { createDrizzle } from "../db";
 import { logger } from "./logger";
 
-/**
- * Per-request auth instance cache
- * In Cloudflare Workers, env bindings are per-request, so we can't use a global singleton
- * Instead, we cache the instance per request using AsyncLocalStorage pattern
- */
 let authInstanceCache: ReturnType<typeof betterAuth> | null = null;
-let lastEnvHash: string | null = null;
 
-/**
- * Creates a hash of the environment bindings to detect changes
- * In development, Cloudflare Workers may recreate env bindings
- */
-function getEnvHash(): string {
-  return `${env.DB?.toString()}-${env.BETTER_AUTH_SECRET}`;
+function assertAuthConfigured(): void {
+  const missing: string[] = [];
+  if (!env.GITHUB_CLIENT_ID) {
+    missing.push("GITHUB_CLIENT_ID");
+  }
+  if (!env.GITHUB_CLIENT_SECRET) {
+    missing.push("GITHUB_CLIENT_SECRET");
+  }
+  if (!env.BETTER_AUTH_SECRET) {
+    missing.push("BETTER_AUTH_SECRET");
+  }
+  if (!env.WEB_URL) {
+    missing.push("WEB_URL");
+  }
+
+  if (missing.length > 0) {
+    throw new Error(`BetterAuth misconfigured. Missing required env vars: ${missing.join(", ")}`);
+  }
 }
 
 /**
- * Creates or returns cached BetterAuth instance for current request
- * Uses request-scoped singleton pattern recommended for Cloudflare Workers
+ * Creates or returns a cached BetterAuth instance.
  */
 export function createAuth() {
   try {
-    const currentEnvHash = getEnvHash();
+    assertAuthConfigured();
 
-    // Return cached instance if env hasn't changed
-    if (authInstanceCache && lastEnvHash === currentEnvHash) {
+    if (authInstanceCache) {
       return authInstanceCache;
     }
 
-    // Log only when actually creating a new instance
     logger.debug("Creating auth instance", {
-      hasDB: !!env.DB,
-      hasGithubClientId: !!env.GITHUB_CLIENT_ID,
-      hasGithubClientSecret: !!env.GITHUB_CLIENT_SECRET,
-      hasBetterAuthSecret: !!env.BETTER_AUTH_SECRET,
-      hasWebUrl: !!env.WEB_URL,
-      webUrl: env.WEB_URL, // Safe to log
-      cached: !!authInstanceCache,
+      hasDB: Boolean(env.DB),
+      hasGithubClientId: Boolean(env.GITHUB_CLIENT_ID),
+      hasGithubClientSecret: Boolean(env.GITHUB_CLIENT_SECRET),
+      hasBetterAuthSecret: Boolean(env.BETTER_AUTH_SECRET),
+      hasWebUrl: Boolean(env.WEB_URL),
+      webUrl: env.WEB_URL,
+      cached: Boolean(authInstanceCache),
     });
 
     const db = createDrizzle(env.DB);
@@ -80,8 +83,6 @@ export function createAuth() {
         tanstackStartCookies(),
       ],
     });
-
-    lastEnvHash = currentEnvHash;
     return authInstanceCache;
   } catch (error) {
     logger.error("Failed to create auth instance", {
