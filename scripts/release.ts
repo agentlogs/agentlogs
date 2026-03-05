@@ -1,23 +1,32 @@
 #!/usr/bin/env bun
 
 /**
- * Release script for npm packages
+ * Release script for publishable targets
  *
  * Usage:
  *   bun release cli patch          # Release cli with patch bump
  *   bun release cli pi minor       # Release cli and pi with minor bump
  *   bun release opencode major     # Release opencode with major bump
+ *   bun release web patch          # Release web artifacts with patch bump
  *   bun release cli patch --dry    # Dry run
  */
 
 const BUMP_TYPES = ["patch", "minor", "major"] as const;
 type BumpType = (typeof BUMP_TYPES)[number];
 
+const RELEASE_TARGETS = {
+  cli: { path: "packages/cli/package.json" },
+  pi: { path: "packages/pi/package.json" },
+  opencode: { path: "packages/opencode/package.json" },
+  web: { path: "packages/web/package.json" },
+} as const satisfies Record<string, { path: string }>;
+
+const SUPPORTED_TARGETS = Object.keys(RELEASE_TARGETS).join(", ");
+
 interface PackageJson {
   name: string;
   version: string;
   private?: boolean;
-  publishConfig?: Record<string, unknown>;
 }
 
 interface ReleaseInfo {
@@ -46,6 +55,7 @@ Examples:
   bun release cli patch          # Release cli with patch bump
   bun release cli pi minor       # Release cli and pi with minor bump
   bun release opencode major     # Release opencode with major bump
+  bun release web patch          # Release web artifacts with patch bump
   bun release cli patch --dry    # Dry run, shows what would happen
 `);
 }
@@ -91,7 +101,12 @@ async function checkOnMainBranch(): Promise<void> {
 }
 
 async function validatePackage(name: string): Promise<{ path: string; pkg: PackageJson }> {
-  const path = `packages/${name}/package.json`;
+  const target = RELEASE_TARGETS[name as keyof typeof RELEASE_TARGETS];
+  if (!target) {
+    throw new Error(`Unsupported release target "${name}". Supported targets: ${SUPPORTED_TARGETS}`);
+  }
+
+  const { path } = target;
   const file = Bun.file(path);
 
   if (!(await file.exists())) {
@@ -102,10 +117,6 @@ async function validatePackage(name: string): Promise<{ path: string; pkg: Packa
 
   if (pkg.private) {
     throw new Error(`Package "${name}" is private, cannot release`);
-  }
-
-  if (!pkg.publishConfig) {
-    throw new Error(`Package "${name}" has no publishConfig, not meant for publishing`);
   }
 
   if (!pkg.version) {

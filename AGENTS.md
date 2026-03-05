@@ -94,9 +94,9 @@ beforeLoad: ({ context }) => {
 };
 ```
 
-## Releasing npm Packages
+## Releasing Packages
 
-Use the release script to publish packages (`cli`, `pi`, `opencode`):
+Use the release script to publish packages and web artifacts (`cli`, `pi`, `opencode`, `web`):
 
 ```bash
 bun release <packages...> <patch|minor|major> [--dry]
@@ -108,6 +108,7 @@ Examples:
 bun release cli patch           # Release cli with patch bump
 bun release cli pi minor        # Release cli and pi with minor bump
 bun release opencode major      # Release opencode with major bump
+bun release web patch           # Release web artifacts with patch bump
 bun release cli patch --dry     # Dry run, shows what would happen
 ```
 
