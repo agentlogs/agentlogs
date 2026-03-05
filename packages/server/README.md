@@ -1,309 +1,175 @@
 # AgentLogs Server Package
 
-A unified TanStack Start application that combines the web UI and API server.
+AgentLogs server is a unified TanStack Start application (web UI + API) that runs as a Bun standalone binary.
 
-## Architecture
+## Runtime Architecture
 
-This application uses:
+- **App framework**: TanStack Start + TanStack Router
+- **Runtime**: Bun standalone binary (`dist/agentlogs-server`)
+- **Database**: SQLite (via Drizzle ORM)
+- **Blob storage**: Local filesystem-backed storage
+- **Auth**: BetterAuth (GitHub OAuth + device flow)
 
-- **TanStack Start** - Full-stack React framework with SSR
-- **Cloudflare Workers** - Edge runtime with D1 database
-- **TanStack Router** - Type-safe file-based routing
-- **Drizzle ORM** - Type-safe database ORM with D1 (SQLite)
-- **BetterAuth** - Authentication with GitHub OAuth
-- **Tailwind CSS v4** - Styling
-- **shadcn/ui** - UI component library
+## Environment Variables
 
-## Setup
+### Required
 
-### 1. Install Dependencies
+| Variable               | Description                                                               |
+| ---------------------- | ------------------------------------------------------------------------- |
+| `GITHUB_CLIENT_ID`     | GitHub OAuth app client ID                                                |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth app client secret                                            |
+| `BETTER_AUTH_SECRET`   | Session/auth secret (generate with `openssl rand -base64 32`)             |
+| `WEB_URL`              | Public base URL for your deployment (for OAuth callback + trusted origin) |
+
+### Optional
+
+| Variable             | Default           | Description                   |
+| -------------------- | ----------------- | ----------------------------- |
+| `DB_LOCAL_PATH`      | `.data/db.sqlite` | SQLite file location          |
+| `STORAGE_DIR`        | `.data/storage`   | Blob storage directory        |
+| `OPENROUTER_API_KEY` | unset             | Enables AI summary generation |
+| `RESEND_API_KEY`     | unset             | Enables transactional emails  |
+| `PORT`               | `3000`            | HTTP server port              |
+| `HOST`               | `0.0.0.0`         | HTTP bind address             |
+
+## Local Development
+
+### 1. Install dependencies (repo root)
 
 ```bash
 bun install
 ```
 
-### 2. Configure Environment Variables
-
-Copy the example environment file:
+### 2. Configure environment
 
 ```bash
-cp .dev.vars.example .dev.vars
+cp .env.example .env
 ```
 
-Edit `.dev.vars` and configure:
+Edit `.env` with your GitHub OAuth credentials and `BETTER_AUTH_SECRET`.
 
-```bash
-# GitHub OAuth - Create at https://github.com/settings/developers
-GITHUB_CLIENT_ID=your_github_client_id_here
-GITHUB_CLIENT_SECRET=your_github_client_secret_here
+### 3. Configure GitHub OAuth app
 
-# Generate secret with: openssl rand -base64 32
-BETTER_AUTH_SECRET=your_secret_here
+Create an OAuth app at <https://github.com/settings/developers>:
 
-# Application URLs (wrangler dev runs on port 8787 by default)
-WEB_URL=http://localhost:3000
+- **Homepage URL**: `http://localhost:3000`
+- **Authorization callback URL**: `http://localhost:3000/api/auth/callback/github`
 
-# API token for Claude Code plugin
-```
-
-### 3. Set Up GitHub OAuth
-
-1. Go to https://github.com/settings/developers
-2. Click "New OAuth App"
-3. Configure:
-   - **Application name**: AgentLogs (or your preferred name)
-   - **Homepage URL**: `http://localhost:8787`
-   - **Authorization callback URL**: `http://localhost:8787/api/auth/callback/github`
-4. Copy the Client ID and Client Secret to your `.dev.vars` file
-
-### 4. Set Up Database
-
-Generate and apply migrations:
-
-```bash
-bun db:setup
-```
-
-### 5. Run Development Server
-
-Start the Wrangler dev server (auto-generates types on start):
-
-```bash
-bun dev
-```
-
-The application will be available at http://localhost:8787
-
-## Database Management
-
-### Generate Migrations
-
-After modifying the schema in `src/db/schema.ts`:
-
-```bash
-bun db:generate
-```
-
-### Run Migrations
+### 4. Run migrations
 
 ```bash
 bun db:migrate
 ```
 
-The compiled standalone binary can also run its embedded migrations before startup:
+### 5. Start dev server
+
+```bash
+bun dev
+```
+
+Open `http://localhost:3000`.
+
+## Build And Run Standalone Binary
+
+Build from source:
+
+```bash
+bun run --filter ./packages/server build
+```
+
+Run with migrations before startup:
 
 ```bash
 ./dist/agentlogs-server --migrations
+```
+
+Migration-only mode:
+
+```bash
 ./dist/agentlogs-server --only-migrations
 ```
 
-### View Database
+## Deployment
 
-Open Drizzle Studio to browse and edit data:
+### Option A: GHCR Docker image
+
+Official image:
+
+- `ghcr.io/agentlogs/agentlogs:latest`
+- `ghcr.io/agentlogs/agentlogs:<version>`
+
+Example:
+
+```bash
+docker run -d \
+  --name agentlogs \
+  -p 3000:3000 \
+  -v agentlogs-data:/app/.data \
+  -e GITHUB_CLIENT_ID=... \
+  -e GITHUB_CLIENT_SECRET=... \
+  -e BETTER_AUTH_SECRET=... \
+  -e WEB_URL=https://logs.example.com \
+  ghcr.io/agentlogs/agentlogs:latest --migrations
+```
+
+### Option B: Release binary
+
+Download the matching binary asset from GitHub Releases (`server-vX.Y.Z` tags), then:
+
+```bash
+chmod +x ./agentlogs-server
+./agentlogs-server --migrations
+```
+
+## Database Management
+
+### Generate migrations
+
+```bash
+bun db:generate
+```
+
+### Apply migrations
+
+```bash
+bun db:migrate
+```
+
+### Open Drizzle Studio
 
 ```bash
 bun db:studio
 ```
 
-Then visit http://localhost:4983
+Then visit `http://localhost:4983`.
 
-### Auto-Generate Cloudflare Types
-
-The `cf-typegen` script generates TypeScript types for your Cloudflare bindings (D1, environment variables, etc.) based on your `wrangler.jsonc` configuration:
-
-```bash
-bun run cf-typegen
-```
-
-This is automatically run before `bun dev`, but you can run it manually if needed.
-
-## API Endpoints
-
-### Server Routes (JSON API)
-
-- `POST /api/ingest` - Ingest transcript data from Claude Code plugin
-- `GET|POST /api/auth/*` - BetterAuth authentication endpoints
-
-### Server Functions (RPC-style)
-
-These use TanStack Start's server functions and access Cloudflare bindings via `env` from `cloudflare:workers`:
-
-```tsx
-import { createServerFn } from "@tanstack/react-start";
-import { env } from "cloudflare:workers";
-import { createDrizzle } from "../db";
-
-export const getRepos = createServerFn("GET", async () => {
-  const db = createDrizzle(env.DB); // Access D1 binding
-  // ... query logic
-});
-```
-
-Available server functions:
-
-- `getRepos()` - Fetch all repositories for authenticated user
-- `getTranscriptsByRepo({ data: repoId })` - Fetch transcripts for a repository
-- `getTranscript(id)` - Fetch single transcript with analysis
-
-## Authentication
-
-The application supports two authentication methods:
-
-1. **Session-based** (for web UI)
-   - Sign in with GitHub via the UI
-   - Sessions stored in SQLite database
-   - Managed by BetterAuth
-
-2. **API Token** (for Claude Code plugin)
-   - Use `Authorization: Bearer <token>` header
-   - Associates data with a special "plugin-user" account
-
-## Project Structure
-
-```
-packages/server/
-├── src/
-│   ├── db/
-│   │   ├── schema.ts          # Drizzle schema definition
-│   │   ├── queries.ts         # Database query functions
-│   │   └── index.ts           # D1 connection factory
-│   ├── lib/
-│   │   ├── auth.ts            # BetterAuth factory function
-│   │   ├── auth-client.ts     # BetterAuth client for React
-│   │   ├── analyzer.ts        # Transcript analysis logic
-│   │   └── server-functions.ts # TanStack server functions
-│   ├── routes/
-│   │   ├── __root.tsx         # Root layout
-│   │   ├── index.tsx          # Dashboard (repos list)
-│   │   ├── repos.$id.tsx      # Repository detail
-│   │   ├── transcripts.$id.tsx # Transcript detail
-│   │   ├── sign-in.tsx        # Sign-in page
-│   │   └── api/
-│   │       ├── ingest.ts      # Ingest endpoint
-│   │       └── auth.$.ts      # Auth handler
-│   ├── components/            # React components
-│   └── styles/                # Global styles
-├── .wrangler/                 # Wrangler state (gitignored)
-├── migrations/                # Drizzle migrations
-├── wrangler.jsonc             # Cloudflare Workers configuration
-├── drizzle.config.ts          # Drizzle Kit configuration
-├── vite.config.ts             # Vite with Cloudflare plugin
-└── package.json
-```
-
-## Deployment to Cloudflare
-
-### 1. Create D1 Database
-
-```bash
-wrangler d1 create agentlogs
-```
-
-Copy the `database_id` from the output and update `wrangler.jsonc`:
-
-```jsonc
-{
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "agentlogs",
-      "database_id": "your-database-id-here",
-      "migrations_dir": "migrations",
-    },
-  ],
-}
-```
-
-### 2. Run Migrations
-
-```bash
-bun db:migrate:remote
-```
-
-### 3. Set Secrets
-
-```bash
-wrangler secret put GITHUB_CLIENT_ID
-wrangler secret put GITHUB_CLIENT_SECRET
-wrangler secret put BETTER_AUTH_SECRET
-```
-
-### 4. Update Environment Variables
-
-In `wrangler.jsonc`, add your production URLs:
-
-```jsonc
-{
-  "vars": {
-    "WEB_URL": "https://your-app.workers.dev",
-  },
-}
-```
-
-### 5. Update GitHub OAuth
-
-Update your GitHub OAuth app callback URL to:
-`https://your-app.workers.dev/api/auth/callback/github`
-
-### 6. Build and Deploy
-
-```bash
-bun run build
-bun run deploy
-```
-
-Your app will be deployed to `https://agentlogs.your-subdomain.workers.dev`!
-
-## Development
-
-### Type Safety
-
-The application uses TypeScript throughout with:
-
-- Type-safe routing via TanStack Router
-- Type-safe database queries via Drizzle ORM
-- Shared types via `@agentlogs/shared` package
-- Generated route types
-
-### Code Style
-
-- No semicolons
-- Single quotes
-- Print width: 100
-- Tailwind CSS for styling
-
-## Troubleshooting
-
-### Database Issues
-
-If you encounter database errors, reset the database:
+### Reset local database
 
 ```bash
 bun db:reset
 ```
 
-### Port Already in Use
+## API Endpoints
 
-Wrangler uses port 8787 by default. To change it, modify `wrangler.jsonc`:
+### JSON API routes
 
-```jsonc
-{
-  "dev": {
-    "port": 8788,
-  },
-}
-```
+- `POST /api/ingest` - Ingest transcript data
+- `GET|POST /api/auth/*` - BetterAuth endpoints
+- `GET /api/transcripts` - List transcripts
+- `GET /api/transcripts/:id` - Fetch transcript metadata
 
-### Authentication Issues
+### Server functions
 
-1. Verify GitHub OAuth callback URL matches: `http://localhost:8787/api/auth/callback/github`
-2. Check that `BETTER_AUTH_SECRET` is set in `.dev.vars`
-3. Clear browser cookies and try again
+Server-side data loading/mutations are implemented via TanStack Start server functions in `src/lib/server-functions.ts`.
 
-### Type Generation Issues
+## Troubleshooting
 
-If `env` types are not working, run:
+### Authentication issues
 
-```bash
-bun run cf-typegen
-```
+1. Verify your OAuth callback is exactly `${WEB_URL}/api/auth/callback/github`.
+2. Verify `WEB_URL` matches the URL users access in the browser.
+3. Verify required secrets are set (`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BETTER_AUTH_SECRET`).
+
+### Data not persisting in Docker
+
+Mount `/app/.data` to a persistent volume (for both SQLite DB and blob storage).

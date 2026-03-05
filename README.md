@@ -119,14 +119,30 @@ See the full [CLI reference](https://agentlogs.ai/docs/cli/commands).
 
 AgentLogs is source-available and can be self-hosted.
 
+You can deploy it either as:
+
+- A container from `ghcr.io/agentlogs/agentlogs`
+- A standalone `agentlogs-server` binary from GitHub Releases
+
+See the full guide at [Self-Hosting Docs](https://agentlogs.ai/docs/introduction/self-hosting).
+
 ### Prerequisites
 
-- [Bun](https://bun.sh/) v1.3.10
 - GitHub OAuth App ([create one](https://github.com/settings/developers))
-  - Homepage: `http://localhost:8787`
-  - Callback: `http://localhost:8787/api/auth/callback/github`
+  - Homepage URL: `https://your-domain.example`
+  - Callback URL: `https://your-domain.example/api/auth/callback/github`
+  - For local development: `http://localhost:3000` and `http://localhost:3000/api/auth/callback/github`
 
-### Setup
+### Required Secrets / Env Vars
+
+- `GITHUB_CLIENT_ID`
+- `GITHUB_CLIENT_SECRET`
+- `BETTER_AUTH_SECRET` (generate with `openssl rand -base64 32`)
+- `WEB_URL` (public app URL, e.g. `https://logs.example.com`)
+
+### Local Development (From Source)
+
+Requires [Bun](https://bun.sh/) v1.3.10.
 
 ```bash
 git clone https://github.com/agentlogs/agentlogs.git
@@ -135,12 +151,11 @@ bun install
 
 # Configure environment
 cp packages/server/.env.example packages/server/.env
-# Edit .dev.vars with your GitHub OAuth credentials and a secret:
+# Edit packages/server/.env with:
 #   GITHUB_CLIENT_ID=...
 #   GITHUB_CLIENT_SECRET=...
 #   BETTER_AUTH_SECRET=...  (openssl rand -base64 32)
-#   BETTER_AUTH_URL=http://localhost:8787
-#   WEB_URL=http://localhost:8787
+#   WEB_URL=http://localhost:3000
 
 # Initialize database
 bun db:migrate
@@ -149,32 +164,43 @@ bun db:migrate
 bun dev
 ```
 
-Open http://localhost:8787
+Open `http://localhost:3000`.
 
-Point the CLI at your instance:
+Point the CLI at your local instance:
 
 ```bash
-npx agentlogs login localhost:8787
+npx agentlogs login localhost:3000
 ```
 
-### Deploy to Cloudflare
+### Option A: Deploy With GHCR
 
 ```bash
-cd packages/server
+docker run -d \
+  --name agentlogs \
+  -p 3000:3000 \
+  -v agentlogs-data:/app/.data \
+  -e GITHUB_CLIENT_ID=... \
+  -e GITHUB_CLIENT_SECRET=... \
+  -e BETTER_AUTH_SECRET=... \
+  -e WEB_URL=https://logs.example.com \
+  ghcr.io/agentlogs/agentlogs:latest --migrations
+```
 
-# Create D1 database
-wrangler d1 create agentlogs
+### Option B: Deploy With A Single Binary
 
-# Run remote migrations
-bun db:migrate:remote
+Download the correct binary for your OS/architecture from GitHub Releases:
 
-# Set secrets
-wrangler secret put GITHUB_CLIENT_ID
-wrangler secret put GITHUB_CLIENT_SECRET
-wrangler secret put BETTER_AUTH_SECRET
+```bash
+chmod +x ./agentlogs-server
+./agentlogs-server --migrations
+```
 
-# Deploy
-bun run deploy
+`--migrations` applies embedded migrations before startup. Use `--only-migrations` for migration-only runs.
+
+### Connect Your Agents To Your Host
+
+```bash
+npx agentlogs login logs.example.com
 ```
 
 ## Project Structure
@@ -182,7 +208,7 @@ bun run deploy
 ```
 packages/
 ├── cli/       — CLI tool (npx agentlogs)
-├── server/    — Server package (TanStack Start web UI + API + Cloudflare Workers + D1)
+├── server/    — Server package (TanStack Start web UI + API, standalone Bun binary + SQLite)
 ├── shared/    — Shared types, schemas, transcript parsing, secret redaction
 ├── pi/        — Pi extension (@agentlogs/pi)
 ├── opencode/  — OpenCode plugin (@agentlogs/opencode)
@@ -217,7 +243,8 @@ bun db:reset         # Reset local database
 
 ## Tech Stack
 
-- **Web**: [TanStack Start](https://tanstack.com/start) + [Cloudflare Workers](https://workers.cloudflare.com/) + [D1](https://developers.cloudflare.com/d1/) (SQLite)
+- **Web**: [TanStack Start](https://tanstack.com/start) + [Bun](https://bun.sh/) standalone runtime
+- **Data**: SQLite + local blob storage on disk
 - **ORM**: [Drizzle](https://orm.drizzle.team/)
 - **Auth**: [BetterAuth](https://better-auth.com/) (GitHub OAuth + device flow)
 - **Styling**: [Tailwind CSS v4](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/)

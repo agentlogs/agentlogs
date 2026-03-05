@@ -1,0 +1,92 @@
+---
+title: Self-Hosting
+description: Deploy AgentLogs with the official GHCR image or standalone binary
+---
+
+# Self-Hosting AgentLogs
+
+AgentLogs server is distributed in two production-ready formats:
+
+- Official Docker image: `ghcr.io/agentlogs/agentlogs`
+- Official standalone binary: `agentlogs-server` (Linux, macOS, Windows)
+
+Both run the same server runtime and support embedded migrations.
+
+## Required Secrets And Env Vars
+
+| Variable               | Required | Notes                                                  |
+| ---------------------- | -------- | ------------------------------------------------------ |
+| `GITHUB_CLIENT_ID`     | Yes      | GitHub OAuth app client ID                             |
+| `GITHUB_CLIENT_SECRET` | Yes      | GitHub OAuth app client secret                         |
+| `BETTER_AUTH_SECRET`   | Yes      | Generate with `openssl rand -base64 32`                |
+| `WEB_URL`              | Yes      | Public base URL of your app (for OAuth + auth origins) |
+
+## Optional Env Vars
+
+| Variable             | Default           | Notes                          |
+| -------------------- | ----------------- | ------------------------------ |
+| `DB_LOCAL_PATH`      | `.data/db.sqlite` | SQLite database file           |
+| `STORAGE_DIR`        | `.data/storage`   | Local blob storage directory   |
+| `OPENROUTER_API_KEY` | unset             | Enables AI-generated summaries |
+| `RESEND_API_KEY`     | unset             | Enables email features         |
+| `PORT`               | `3000`            | HTTP port                      |
+| `HOST`               | `0.0.0.0`         | HTTP bind host                 |
+
+## 1. Create A GitHub OAuth App
+
+Create an OAuth app at <https://github.com/settings/developers>:
+
+- **Homepage URL**: `${WEB_URL}`
+- **Authorization callback URL**: `${WEB_URL}/api/auth/callback/github`
+
+Example for production:
+
+- Homepage: `https://logs.example.com`
+- Callback: `https://logs.example.com/api/auth/callback/github`
+
+## 2. Deploy With GHCR
+
+Pull and run the official image:
+
+```bash
+docker run -d \
+  --name agentlogs \
+  -p 3000:3000 \
+  -v agentlogs-data:/app/.data \
+  -e GITHUB_CLIENT_ID=... \
+  -e GITHUB_CLIENT_SECRET=... \
+  -e BETTER_AUTH_SECRET=... \
+  -e WEB_URL=https://logs.example.com \
+  ghcr.io/agentlogs/agentlogs:latest --migrations
+```
+
+<Note>Mount `/app/.data` to persist both SQLite data and uploaded transcript blobs.</Note>
+
+## 3. Deploy With A Single Binary
+
+Download a matching binary from the GitHub Releases page (`server-vX.Y.Z` tags), then run:
+
+```bash
+chmod +x ./agentlogs-server
+./agentlogs-server --migrations
+```
+
+- `--migrations` runs embedded migrations, then starts the server
+- `--only-migrations` runs migrations and exits
+
+## 4. Connect Your CLI And Plugins
+
+Authenticate your CLI against your host:
+
+```bash
+npx agentlogs login logs.example.com
+```
+
+Use your public hostname (without `https://`) so your local CLI/plugins upload to your self-hosted instance.
+
+## 5. Upgrade
+
+When upgrading, deploy a newer image/binary and run with migrations again:
+
+- Docker: restart container with the new tag and `--migrations`
+- Binary: replace binary and run `./agentlogs-server --migrations`

@@ -24,6 +24,7 @@
         "pages": [
           "introduction/overview",
           "introduction/getting-started",
+          "introduction/self-hosting",
           "introduction/permissions",
           "introduction/secret-redaction"
         ]

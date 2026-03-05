@@ -39,7 +39,7 @@ const features = [
 const faqs = [
   {
     q: "Is AgentLogs source-available?",
-    a: "Yes. The entire codebase (CLI, web app, plugins) is on GitHub under FSL-1.1-Apache-2.0. You can self-host it on Cloudflare Workers with a single deploy command, or use our hosted version at agentlogs.ai.",
+    a: "Yes. The entire codebase (CLI, web app, plugins) is on GitHub under FSL-1.1-Apache-2.0. You can self-host it with the official Docker image (`ghcr.io/agentlogs/agentlogs`) or standalone binaries, or use our hosted version at agentlogs.ai.",
   },
   {
     q: "How does AgentLogs capture my sessions?",
@@ -241,8 +241,8 @@ function LandingPage() {
               Own your data. Self-host in minutes.
             </h2>
             <p className="mt-3 text-muted-foreground">
-              AgentLogs uses FSL-1.1-Apache-2.0 and deploys to Cloudflare Workers with a single command. Use our cloud
-              or run it yourself. Your transcripts, your infrastructure.
+              AgentLogs uses FSL-1.1-Apache-2.0 and ships as a Docker image or single standalone binary. Use our cloud
+              or run it yourself on your own infrastructure.
             </p>
             <div className="mt-8">
               <a
