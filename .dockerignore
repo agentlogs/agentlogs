@@ -1,0 +1,12 @@
+.git
+.github
+node_modules
+logs
+tmp
+docs
+fixtures
+.DS_Store
+
+packages/**/node_modules
+packages/web/.data
+packages/web/dist
