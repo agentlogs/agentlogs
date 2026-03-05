@@ -1,17 +1,15 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("API Health", () => {
-  test("server is running and returns HTML", async ({ request }) => {
-    const response = await request.get("/");
+  test("health endpoint returns ok JSON", async ({ request }) => {
+    const response = await request.get("/healthz");
     expect(response.ok()).toBe(true);
-    const text = await response.text();
-    expect(text).toContain("AgentLogs");
+    expect(response.headers()["content-type"]).toContain("application/json");
+    await expect(response.json()).resolves.toEqual({ ok: true });
   });
 
-  test("static assets are served", async ({ request }) => {
-    // The landing page should load successfully
-    const response = await request.get("/");
+  test("health endpoint supports HEAD", async ({ request }) => {
+    const response = await request.head("/healthz");
     expect(response.status()).toBe(200);
-    expect(response.headers()["content-type"]).toContain("text/html");
   });
 });
