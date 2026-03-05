@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "bun --bun vite dev --port 3000",
     "dev:test": "VITE_USE_TEST_DB=true bun --bun vite dev --port 3000",
-    "build": "bun --bun vite build",
+    "build": "bun --bun vite build && bun run ./scripts/build.ts",
     "preview": "bun --bun vite preview",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
