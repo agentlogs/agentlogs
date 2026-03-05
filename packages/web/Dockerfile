@@ -28,7 +28,6 @@ WORKDIR /app
 RUN useradd --create-home --uid 10001 app
 
 COPY --from=build /app/packages/web/dist/agentlogs-web /app/agentlogs-web
-COPY --from=build /app/packages/web/migrations /app/migrations
 
 RUN mkdir -p /app/.data/storage \
   && chown -R app:app /app \

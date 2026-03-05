@@ -90,6 +90,13 @@ bun db:generate
 bun db:migrate
 ```
 
+The compiled standalone binary can also run its embedded migrations before startup:
+
+```bash
+./dist/agentlogs-web --migrations
+./dist/agentlogs-web --only-migrations
+```
+
 ### View Database
 
 Open Drizzle Studio to browse and edit data:

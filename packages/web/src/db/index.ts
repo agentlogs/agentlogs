@@ -11,7 +11,7 @@ function resolveDbPath(rawPath: string): string {
   return path.resolve(process.cwd(), withoutPrefix);
 }
 
-const dbPath = resolveDbPath(env.DB);
+export const dbPath = resolveDbPath(env.DB);
 mkdirSync(path.dirname(dbPath), { recursive: true });
 const sqlite = new Database(dbPath, { create: true });
 
