@@ -10,8 +10,9 @@
  * This ensures the database is seeded BEFORE vite reads it.
  */
 import { Database } from "bun:sqlite";
+import { $ } from "bun";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { execSync, spawn } from "child_process";
+import { spawn } from "child_process";
 import * as schema from "../web/src/db/schema";
 import path from "path";
 import fs from "fs";
@@ -20,52 +21,28 @@ import fs from "fs";
 export const SERVER_LOG_FILE = path.join(import.meta.dirname!, ".server-output.log");
 
 const WEB_DIR = path.resolve(import.meta.dirname!, "../web");
-const TEST_STATE_DIR = path.join(WEB_DIR, ".wrangler-test/state");
-const TEST_DB_DIR = path.join(TEST_STATE_DIR, "v3/d1");
-
-function findSqliteFile(dir: string): string | null {
-  if (!fs.existsSync(dir)) return null;
-
-  try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        const found = findSqliteFile(fullPath);
-        if (found) return found;
-      } else if (entry.name.endsWith(".sqlite")) {
-        return fullPath;
-      }
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
-}
+const TEST_DB_LOCAL_PATH = "file:.data/test-db.sqlite";
+const TEST_DB_PATH = path.join(WEB_DIR, ".data/test-db.sqlite");
 
 function deleteExistingDatabase() {
-  const existingDb = findSqliteFile(TEST_DB_DIR);
-  if (existingDb) {
-    fs.unlinkSync(existingDb);
-  }
+  fs.mkdirSync(path.dirname(TEST_DB_PATH), { recursive: true });
+  fs.rmSync(TEST_DB_PATH, { force: true });
 }
 
-function applyMigrations() {
-  execSync(`npx wrangler d1 migrations apply agentlogs --local --persist-to "${TEST_STATE_DIR}"`, {
-    cwd: WEB_DIR,
-    stdio: "pipe",
-    env: { ...process.env, CI: "true" },
+async function applyMigrations() {
+  await $`bun run db:migrate`.cwd(WEB_DIR).env({
+    ...process.env,
+    CI: "true",
+    DB_LOCAL_PATH: TEST_DB_LOCAL_PATH,
   });
 }
 
 function seedDatabase() {
-  const dbPath = findSqliteFile(TEST_DB_DIR);
-  if (!dbPath) {
-    throw new Error("[test-server] Database not found after migrations");
+  if (!fs.existsSync(TEST_DB_PATH)) {
+    throw new Error(`[test-server] Database not found after migrations: ${TEST_DB_PATH}`);
   }
 
-  const sqlite = new Database(dbPath);
+  const sqlite = new Database(TEST_DB_PATH);
   const db = drizzle(sqlite, { schema });
 
   // Seed test user with "user" role (not "waitlist") so they can access /app
@@ -173,23 +150,16 @@ function startViteServer() {
   // Clear previous log file
   fs.writeFileSync(SERVER_LOG_FILE, "");
 
-  // Run cf-typegen first
-  execSync("bun run cf-typegen", {
-    cwd: WEB_DIR,
-    stdio: "pipe",
-    env: { ...process.env, VITE_USE_TEST_DB: "true" },
-  });
-
   // Open log file for appending
   const logStream = fs.createWriteStream(SERVER_LOG_FILE, { flags: "a" });
 
   // Start vite dev in the foreground on port 3009 (this will keep running)
   // Use --host to bind to all interfaces so subprocess fetch can connect
   // Capture output to log file for debugging on test failure
-  const vite = spawn("bun", ["run", "vite", "dev", "--port", "3009", "--host"], {
+  const vite = spawn("bun", ["--bun", "vite", "dev", "--port", "3009", "--host"], {
     cwd: WEB_DIR,
     stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, VITE_USE_TEST_DB: "true" },
+    env: { ...process.env, VITE_USE_TEST_DB: "true", DB_LOCAL_PATH: TEST_DB_LOCAL_PATH },
   });
 
   // Write stdout and stderr to log file
@@ -202,8 +172,11 @@ function startViteServer() {
   });
 }
 
-// Main
-deleteExistingDatabase();
-applyMigrations();
-seedDatabase();
-startViteServer();
+async function main() {
+  deleteExistingDatabase();
+  await applyMigrations();
+  seedDatabase();
+  startViteServer();
+}
+
+await main();
