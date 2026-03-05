@@ -1,7 +1,6 @@
 import { createDrizzle } from "@/db";
 import { createFileRoute } from "@tanstack/react-router";
 import { getModelDisplayName } from "@agentlogs/shared";
-import { ImageResponse } from "@vercel/og";
 import { env } from "@/lib/env";
 import { getPublicTranscript } from "../../db/queries";
 import { logger } from "../../lib/logger";
@@ -392,6 +391,7 @@ export const Route = createFileRoute("/api/og/$id" as any)({
 
           const [serifFont, sansFont] = await Promise.all([serifResponse.arrayBuffer(), sansResponse.arrayBuffer()]);
 
+          const { ImageResponse } = await import("@vercel/og");
           const response = new ImageResponse(<OgImage data={data} />, {
             width: 1200,
             height: 630,
