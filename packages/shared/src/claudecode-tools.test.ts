@@ -474,9 +474,9 @@ describe("Tool Call Input/Output Processing", () => {
     const toolResult = {
       tool_use_id: "toolu_01UyCBtjecmBzJtxbDdt6AwH",
       type: "tool_result",
-      content: "/Users/philipp/dev/vibeinsights/packages/web/wrangler.jsonc",
+      content: "/Users/philipp/dev/vibeinsights/packages/server/wrangler.jsonc",
       output: {
-        filenames: ["/Users/philipp/dev/vibeinsights/packages/web/wrangler.jsonc"],
+        filenames: ["/Users/philipp/dev/vibeinsights/packages/server/wrangler.jsonc"],
         durationMs: 48,
         numFiles: 1,
         truncated: false,
@@ -495,7 +495,7 @@ describe("Tool Call Input/Output Processing", () => {
         "output": {
           "durationMs": 48,
           "filenames": [
-            "./packages/web/wrangler.jsonc",
+            "./packages/server/wrangler.jsonc",
           ],
           "truncated": false,
         },
@@ -564,13 +564,13 @@ describe("Tool Call Input/Output Processing", () => {
       tool_use_id: "toolu_01SgXEtQKNAkoVwAC8qAeaEB",
       type: "tool_result",
       content:
-        "Found 3 files\\n/Users/philipp/dev/vibeinsights/packages/web/package.json\\n/Users/philipp/dev/vibeinsights/.github/workflows/ci.yml\\n/Users/philipp/dev/vibeinsights/packages/web/README.md",
+        "Found 3 files\\n/Users/philipp/dev/vibeinsights/packages/server/package.json\\n/Users/philipp/dev/vibeinsights/.github/workflows/ci.yml\\n/Users/philipp/dev/vibeinsights/packages/server/README.md",
       output: {
         mode: "files_with_matches",
         filenames: [
-          "/Users/philipp/dev/vibeinsights/packages/web/package.json",
+          "/Users/philipp/dev/vibeinsights/packages/server/package.json",
           "/Users/philipp/dev/vibeinsights/.github/workflows/ci.yml",
-          "/Users/philipp/dev/vibeinsights/packages/web/README.md",
+          "/Users/philipp/dev/vibeinsights/packages/server/README.md",
         ],
         numFiles: 3,
       },
@@ -588,9 +588,9 @@ describe("Tool Call Input/Output Processing", () => {
         "model": "claude-sonnet-4-5-20250929",
         "output": {
           "filenames": [
-            "./packages/web/package.json",
+            "./packages/server/package.json",
             "./.github/workflows/ci.yml",
-            "./packages/web/README.md",
+            "./packages/server/README.md",
           ],
           "mode": "files_with_matches",
         },
@@ -618,13 +618,13 @@ describe("Tool Call Input/Output Processing", () => {
       tool_use_id: "toolu_01ULWHVCD4z7DDv8hw7THVUr",
       type: "tool_result",
       content:
-        "/Users/philipp/dev/vibeinsights/packages/web/src/routes/__root.tsx:43:  const { data: session, isPending } = authClient.useSession();\\n/Users/philipp/dev/vibeinsights/packages/web/src/routes/__root.tsx:116:            ) : isPending ? (",
+        "/Users/philipp/dev/vibeinsights/packages/server/src/routes/__root.tsx:43:  const { data: session, isPending } = authClient.useSession();\\n/Users/philipp/dev/vibeinsights/packages/server/src/routes/__root.tsx:116:            ) : isPending ? (",
       output: {
         mode: "content",
         numFiles: 0,
         filenames: [],
         content:
-          "/Users/philipp/dev/vibeinsights/packages/web/src/routes/__root.tsx:43:  const { data: session, isPending } = authClient.useSession();\\n/Users/philipp/dev/vibeinsights/packages/web/src/routes/__root.tsx:116:            ) : isPending ? (",
+          "/Users/philipp/dev/vibeinsights/packages/server/src/routes/__root.tsx:43:  const { data: session, isPending } = authClient.useSession();\\n/Users/philipp/dev/vibeinsights/packages/server/src/routes/__root.tsx:116:            ) : isPending ? (",
         numLines: 2,
       },
     };
@@ -642,7 +642,7 @@ describe("Tool Call Input/Output Processing", () => {
         },
         "model": "claude-sonnet-4-5-20250929",
         "output": {
-          "content": "./packages/web/src/routes/__root.tsx:43:  const { data: session, isPending } = authClient.useSession();\\n./packages/web/src/routes/__root.tsx:116:            ) : isPending ? (",
+          "content": "./packages/server/src/routes/__root.tsx:43:  const { data: session, isPending } = authClient.useSession();\\n./packages/server/src/routes/__root.tsx:116:            ) : isPending ? (",
           "filenames": [],
           "mode": "content",
           "numLines": 2,
@@ -704,11 +704,11 @@ describe("Tool Call Input/Output Processing", () => {
     const toolResult = {
       type: "tool_result",
       content:
-        '$ prettier --check .\\n[warn] packages/cli/src/commands/hook.ts\\n[warn] packages/cli/src/commands/upload.ts\\n[warn] packages/cli/src/config.ts\\n[warn] packages/cli/src/env-config.ts\\n[warn] packages/cli/src/index.ts\\n[warn] packages/cli/src/lib/perform-upload.ts\\n[warn] packages/web/wrangler.jsonc\\n[warn] Code style issues found in 7 files. Run Prettier with --write to fix.\\nerror: script \\"format:check\\" exited with code 1\\n\\nChecking formatting...',
+        '$ prettier --check .\\n[warn] packages/cli/src/commands/hook.ts\\n[warn] packages/cli/src/commands/upload.ts\\n[warn] packages/cli/src/config.ts\\n[warn] packages/cli/src/env-config.ts\\n[warn] packages/cli/src/index.ts\\n[warn] packages/cli/src/lib/perform-upload.ts\\n[warn] packages/server/wrangler.jsonc\\n[warn] Code style issues found in 7 files. Run Prettier with --write to fix.\\nerror: script \\"format:check\\" exited with code 1\\n\\nChecking formatting...',
       is_error: true,
       tool_use_id: "toolu_01WtSaAxn9CnrESspMmyGdjd",
       output:
-        'Error: $ prettier --check .\\n[warn] packages/cli/src/commands/hook.ts\\n[warn] packages/cli/src/commands/upload.ts\\n[warn] packages/cli/src/config.ts\\n[warn] packages/cli/src/env-config.ts\\n[warn] packages/cli/src/index.ts\\n[warn] packages/cli/src/lib/perform-upload.ts\\n[warn] packages/web/wrangler.jsonc\\n[warn] Code style issues found in 7 files. Run Prettier with --write to fix.\\nerror: script \\"format:check\\" exited with code 1\\n\\nChecking formatting...',
+        'Error: $ prettier --check .\\n[warn] packages/cli/src/commands/hook.ts\\n[warn] packages/cli/src/commands/upload.ts\\n[warn] packages/cli/src/config.ts\\n[warn] packages/cli/src/env-config.ts\\n[warn] packages/cli/src/index.ts\\n[warn] packages/cli/src/lib/perform-upload.ts\\n[warn] packages/server/wrangler.jsonc\\n[warn] Code style issues found in 7 files. Run Prettier with --write to fix.\\nerror: script \\"format:check\\" exited with code 1\\n\\nChecking formatting...',
     };
 
     const toolCall = processToolCall(toolUse, toolResult);
@@ -722,7 +722,7 @@ describe("Tool Call Input/Output Processing", () => {
         },
         "isError": true,
         "model": "claude-sonnet-4-5-20250929",
-        "output": "Error: $ prettier --check .\\n[warn] packages/cli/src/commands/hook.ts\\n[warn] packages/cli/src/commands/upload.ts\\n[warn] packages/cli/src/config.ts\\n[warn] packages/cli/src/env-config.ts\\n[warn] packages/cli/src/index.ts\\n[warn] packages/cli/src/lib/perform-upload.ts\\n[warn] packages/web/wrangler.jsonc\\n[warn] Code style issues found in 7 files. Run Prettier with --write to fix.\\nerror: script \\"format:check\\" exited with code 1\\n\\nChecking formatting...",
+        "output": "Error: $ prettier --check .\\n[warn] packages/cli/src/commands/hook.ts\\n[warn] packages/cli/src/commands/upload.ts\\n[warn] packages/cli/src/config.ts\\n[warn] packages/cli/src/env-config.ts\\n[warn] packages/cli/src/index.ts\\n[warn] packages/cli/src/lib/perform-upload.ts\\n[warn] packages/server/wrangler.jsonc\\n[warn] Code style issues found in 7 files. Run Prettier with --write to fix.\\nerror: script \\"format:check\\" exited with code 1\\n\\nChecking formatting...",
         "timestamp": "2025-10-12T21:36:00.000Z",
         "toolName": "Bash",
         "type": "tool-call",
@@ -736,7 +736,7 @@ describe("Tool Call Input/Output Processing", () => {
       id: "toolu_01J69ocxnRTejAph2xtxpkg2",
       name: "Bash",
       input: {
-        command: "cd /Users/philipp/dev/vibeinsights/packages/web && bun run dev",
+        command: "cd /Users/philipp/dev/vibeinsights/packages/server && bun run dev",
         description: "Start dev server to test fixes",
         timeout: 30000,
         run_in_background: true,
@@ -762,7 +762,7 @@ describe("Tool Call Input/Output Processing", () => {
       {
         "id": "toolu_01J69ocxnRTejAph2xtxpkg2",
         "input": {
-          "command": "cd ./packages/web && bun run dev",
+          "command": "cd ./packages/server && bun run dev",
           "description": "Start dev server to test fixes",
           "run_in_background": true,
           "timeout": 30000,
@@ -796,14 +796,14 @@ describe("Tool Call Input/Output Processing", () => {
       tool_use_id: "toolu_01255yZK784x1zySe8eQyxDE",
       type: "tool_result",
       content:
-        "<status>failed</status>\\n\\n<exit_code>1</exit_code>\\n\\n<stderr>\\n(eval):cd:1: no such file or directory: packages/web\\n</stderr>\\n\\n<timestamp>2025-10-12T22:47:37.626Z</timestamp>",
+        "<status>failed</status>\\n\\n<exit_code>1</exit_code>\\n\\n<stderr>\\n(eval):cd:1: no such file or directory: packages/server\\n</stderr>\\n\\n<timestamp>2025-10-12T22:47:37.626Z</timestamp>",
       output: {
         shellId: "bc7034",
-        command: "cd packages/web && bun run dev",
+        command: "cd packages/server && bun run dev",
         status: "failed",
         exitCode: 1,
         stdout: "",
-        stderr: "(eval):cd:1: no such file or directory: packages/web",
+        stderr: "(eval):cd:1: no such file or directory: packages/server",
         stdoutLines: 1,
         stderrLines: 1,
         timestamp: "2025-10-12T22:47:37.626Z",
@@ -820,11 +820,11 @@ describe("Tool Call Input/Output Processing", () => {
         },
         "model": "claude-sonnet-4-5-20250929",
         "output": {
-          "command": "cd packages/web && bun run dev",
+          "command": "cd packages/server && bun run dev",
           "exitCode": 1,
           "shellId": "bc7034",
           "status": "failed",
-          "stderr": "(eval):cd:1: no such file or directory: packages/web",
+          "stderr": "(eval):cd:1: no such file or directory: packages/server",
           "stdout": "",
           "timestamp": "2025-10-12T22:47:37.626Z",
         },

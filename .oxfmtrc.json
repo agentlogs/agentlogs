@@ -11,7 +11,7 @@
     "**/docs/changelog.mdx"
   ],
   "experimentalTailwindcss": {
-    "stylesheet": "./packages/web/src/styles/globals.css",
+    "stylesheet": "./packages/server/src/styles/globals.css",
     "attributes": ["class", "className"],
     "functions": ["clsx", "cn"],
     "preserveDuplicates": false,

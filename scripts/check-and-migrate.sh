@@ -5,7 +5,7 @@
 
 set -e
 
-cd "$(dirname "$0")/../packages/web" || exit 1
+cd "$(dirname "$0")/../packages/server" || exit 1
 
 # Colors for output
 GREEN='\033[0;32m'

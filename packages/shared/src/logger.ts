@@ -62,7 +62,7 @@ function sanitizeMeta(meta: unknown): unknown {
  * - Zero dependencies (Node.js fs only)
  *
  * Usage:
- *   const logger = createLogger("web");
+ *   const logger = createLogger("server");
  *   logger.info("Server starting");
  *   logger.error("Upload failed", { sessionId: "abc" });
  */
@@ -197,12 +197,12 @@ class Logger {
 /**
  * Factory function to create a logger instance for a component
  *
- * @param component - Component name (e.g., "web", "plugin", "cli")
+ * @param component - Component name (e.g., "server", "plugin", "cli")
  * @param options - Optional logger configuration (logToFile, logFilePath)
  * @returns Logger instance
  *
  * @example
- *   const logger = createLogger("web");
+ *   const logger = createLogger("server");
  *   logger.info("Server started on port 8787");
  *   logger.error("Database connection failed", { error: err });
  *

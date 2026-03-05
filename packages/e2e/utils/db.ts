@@ -1,10 +1,10 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import * as schema from "../../web/src/db/schema";
+import * as schema from "../../server/src/db/schema";
 import path from "path";
 import fs from "fs";
 
-const TEST_DB_PATH = path.resolve(import.meta.dirname!, "../../web/.data/test-db.sqlite");
+const TEST_DB_PATH = path.resolve(import.meta.dirname!, "../../server/.data/test-db.sqlite");
 
 /**
  * Get a direct connection to the test SQLite database.

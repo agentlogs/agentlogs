@@ -1,4 +1,4 @@
-# AgentLogs Web Application
+# AgentLogs Server Package
 
 A unified TanStack Start application that combines the web UI and API server.
 
@@ -93,8 +93,8 @@ bun db:migrate
 The compiled standalone binary can also run its embedded migrations before startup:
 
 ```bash
-./dist/agentlogs-web --migrations
-./dist/agentlogs-web --only-migrations
+./dist/agentlogs-server --migrations
+./dist/agentlogs-server --only-migrations
 ```
 
 ### View Database
@@ -161,7 +161,7 @@ The application supports two authentication methods:
 ## Project Structure
 
 ```
-packages/web/
+packages/server/
 ├── src/
 │   ├── db/
 │   │   ├── schema.ts          # Drizzle schema definition

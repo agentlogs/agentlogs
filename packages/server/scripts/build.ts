@@ -102,7 +102,7 @@ function generateEmbeddedAssetsModule(): void {
   mkdirSync(path.dirname(GENERATED_ASSETS_MODULE), { recursive: true });
   writeFileSync(GENERATED_ASSETS_MODULE, lines.join("\n"));
 
-  console.log(`[web build] Embedded ${assetFiles.length} static assets`);
+  console.log(`[server build] Embedded ${assetFiles.length} static assets`);
 }
 
 function generateEmbeddedMigrationsModule(): void {
@@ -118,12 +118,12 @@ function generateEmbeddedMigrationsModule(): void {
   mkdirSync(path.dirname(GENERATED_MIGRATIONS_MODULE), { recursive: true });
   writeFileSync(GENERATED_MIGRATIONS_MODULE, lines.join("\n"));
 
-  console.log(`[web build] Embedded ${migrations.length} Drizzle migrations`);
+  console.log(`[server build] Embedded ${migrations.length} Drizzle migrations`);
 }
 
 const target = resolveTarget();
 generateEmbeddedAssetsModule();
 generateEmbeddedMigrationsModule();
-console.log(`[web build] Using binary target: ${target}`);
+console.log(`[server build] Using binary target: ${target}`);
 
-await $`bun build --compile --target ${target} --outfile dist/agentlogs-web ./standalone.ts`;
+await $`bun build --compile --target ${target} --outfile dist/agentlogs-server ./standalone.ts`;

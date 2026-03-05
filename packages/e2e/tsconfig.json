@@ -4,7 +4,7 @@
     "types": ["@types/bun", "@types/node"],
     "lib": ["ES2022", "DOM"],
     "paths": {
-      "@agentlogs/web/*": ["../web/src/*"]
+      "@agentlogs/server/*": ["../server/src/*"]
     }
   },
   "include": ["**/*.ts"]

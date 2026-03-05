@@ -134,7 +134,7 @@ cd agentlogs
 bun install
 
 # Configure environment
-cp packages/web/.env.example packages/web/.env
+cp packages/server/.env.example packages/server/.env
 # Edit .dev.vars with your GitHub OAuth credentials and a secret:
 #   GITHUB_CLIENT_ID=...
 #   GITHUB_CLIENT_SECRET=...
@@ -160,7 +160,7 @@ npx agentlogs login localhost:8787
 ### Deploy to Cloudflare
 
 ```bash
-cd packages/web
+cd packages/server
 
 # Create D1 database
 wrangler d1 create agentlogs
@@ -182,7 +182,7 @@ bun run deploy
 ```
 packages/
 ├── cli/       — CLI tool (npx agentlogs)
-├── web/       — Web app (TanStack Start + Cloudflare Workers + D1)
+├── server/    — Server package (TanStack Start web UI + API + Cloudflare Workers + D1)
 ├── shared/    — Shared types, schemas, transcript parsing, secret redaction
 ├── pi/        — Pi extension (@agentlogs/pi)
 ├── opencode/  — OpenCode plugin (@agentlogs/opencode)
@@ -193,7 +193,7 @@ docs/          — Documentation (Mintlify)
 ## Development
 
 ```bash
-# Start the web app
+# Start the server package
 bun dev
 
 # Run CLI

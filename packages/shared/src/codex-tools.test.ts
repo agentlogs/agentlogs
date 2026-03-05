@@ -358,7 +358,7 @@ describe("Codex tool calls", () => {
             "Process exited with code 0",
             "Original token count: 0",
             "Output:",
-            "packages/web/src/app.tsx:12:Agent Usage",
+            "packages/server/src/app.tsx:12:Agent Usage",
           ].join("\n"),
         },
       },
@@ -376,7 +376,7 @@ describe("Codex tool calls", () => {
         },
         "model": "openai/gpt-5-codex",
         "output": {
-          "content": "packages/web/src/app.tsx:12:Agent Usage",
+          "content": "packages/server/src/app.tsx:12:Agent Usage",
           "mode": "content",
           "numLines": 1,
           "numMatches": 1,

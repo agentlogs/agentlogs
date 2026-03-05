@@ -1,15 +1,15 @@
-name: Publish web artifacts
+name: Publish server artifacts
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (format: web-vX.Y.Z)"
+        description: "Release tag (format: server-vX.Y.Z)"
         required: true
         type: string
   push:
     tags:
-      - "web-v*"
+      - "server-v*"
 
 permissions:
   contents: write
@@ -36,12 +36,12 @@ jobs:
             TAG="${{ github.ref_name }}"
           fi
 
-          if [[ ! "$TAG" =~ ^web-v.+$ ]]; then
-            echo "Expected tag format: web-vX.Y.Z. Received: $TAG"
+          if [[ ! "$TAG" =~ ^server-v.+$ ]]; then
+            echo "Expected tag format: server-vX.Y.Z. Received: $TAG"
             exit 1
           fi
 
-          VERSION="${TAG#web-v}"
+          VERSION="${TAG#server-v}"
           OWNER_LOWER="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
           IMAGE="ghcr.io/${OWNER_LOWER}/agentlogs"
 
@@ -80,19 +80,19 @@ jobs:
         uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile --ignore-scripts --filter ./packages/shared --filter ./packages/web
+        run: bun install --frozen-lockfile --ignore-scripts --filter ./packages/shared --filter ./packages/server
 
       - name: Build standalone binary
         env:
           BUN_BINARY_TARGET: ${{ matrix.platform }}
           BUN_BINARY_ARCH: ${{ matrix.arch }}
-        run: bun run --filter ./packages/web build
+        run: bun run --filter ./packages/server build
 
       - name: Package binary artifact
         run: |
           set -euo pipefail
 
-          SRC="packages/web/dist/agentlogs-web"
+          SRC="packages/server/dist/agentlogs-server"
           EXT=""
           if [[ "${{ matrix.platform }}" == "windows" ]]; then
             SRC="${SRC}.exe"
@@ -100,7 +100,7 @@ jobs:
           fi
 
           OUT_DIR="release-assets"
-          OUT_NAME="agentlogs-web-${{ needs.meta.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}${EXT}"
+          OUT_NAME="agentlogs-server-${{ needs.meta.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}${EXT}"
           mkdir -p "$OUT_DIR"
           cp "$SRC" "$OUT_DIR/$OUT_NAME"
           chmod +x "$OUT_DIR/$OUT_NAME" || true
@@ -139,7 +139,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: packages/web/Dockerfile
+          file: packages/server/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
@@ -166,7 +166,7 @@ jobs:
           set -euo pipefail
           cd release-assets
 
-          mapfile -t FILES < <(find . -maxdepth 1 -type f -name 'agentlogs-web-*' -printf '%f\n' | sort)
+          mapfile -t FILES < <(find . -maxdepth 1 -type f -name 'agentlogs-server-*' -printf '%f\n' | sort)
           if [[ "${#FILES[@]}" -eq 0 ]]; then
             echo "No binaries found in release-assets"
             exit 1
@@ -179,15 +179,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
-          name: AgentLogs web v${{ needs.meta.outputs.version }}
+          name: AgentLogs server v${{ needs.meta.outputs.version }}
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
-            release-assets/agentlogs-web-*
+            release-assets/agentlogs-server-*
             release-assets/checksums.md5
             release-assets/checksums.sha256
           body: |
-            Published web server artifacts for `${{ needs.meta.outputs.tag }}`.
+            Published server artifacts for `${{ needs.meta.outputs.tag }}`.
 
             Docker image:
             - `${{ needs.meta.outputs.image }}:${{ needs.meta.outputs.version }}`

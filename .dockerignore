@@ -8,5 +8,5 @@ fixtures
 .DS_Store
 
 packages/**/node_modules
-packages/web/.data
-packages/web/dist
+packages/server/.data
+packages/server/dist

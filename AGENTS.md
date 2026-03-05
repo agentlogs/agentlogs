@@ -38,12 +38,12 @@
 
 - Do atomic and small commits for logical changes, only when asked
 - Capitalize the first letter of the commit message
-- Prefix the commit with the package name or area if necessary, e.g. web,plugin,shared,ci
+- Prefix the commit with the package name or area if necessary, e.g. server,plugin,shared,ci
 
 ## UI Components (shadcn)
 
 - NEVER manually create shadcn components. Always use the shadcn CLI to download them.
-- Run from packages/web: `bunx shadcn@latest add <component-name>`
+- Run from packages/server: `bunx shadcn@latest add <component-name>`
 - Example: `bunx shadcn@latest add data-table`
 
 ## Server Functions & Loaders
@@ -96,7 +96,7 @@ beforeLoad: ({ context }) => {
 
 ## Releasing Packages
 
-Use the release script to publish packages and web artifacts (`cli`, `pi`, `opencode`, `web`):
+Use the release script to publish packages and server artifacts (`cli`, `pi`, `opencode`, `server`):
 
 ```bash
 bun release <packages...> <patch|minor|major> [--dry]
@@ -108,7 +108,7 @@ Examples:
 bun release cli patch           # Release cli with patch bump
 bun release cli pi minor        # Release cli and pi with minor bump
 bun release opencode major      # Release opencode with major bump
-bun release web patch           # Release web artifacts with patch bump
+bun release server patch        # Release server artifacts with patch bump
 bun release cli patch --dry     # Dry run, shows what would happen
 ```
 

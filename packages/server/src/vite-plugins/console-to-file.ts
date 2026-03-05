@@ -145,7 +145,7 @@ export function consoleToFile() {
               return;
             }
 
-            const logLine = `[${timestamp}] [web] [${level}] ${message}\n`;
+            const logLine = `[${timestamp}] [server] [${level}] ${message}\n`;
             appendFileSync(logFilePath, logLine);
           } catch {
             // Silently fail - don't crash if disk full, etc.

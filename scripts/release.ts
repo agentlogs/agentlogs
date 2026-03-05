@@ -7,7 +7,7 @@
  *   bun release cli patch          # Release cli with patch bump
  *   bun release cli pi minor       # Release cli and pi with minor bump
  *   bun release opencode major     # Release opencode with major bump
- *   bun release web patch          # Release web artifacts with patch bump
+ *   bun release server patch       # Release server artifacts with patch bump
  *   bun release cli patch --dry    # Dry run
  */
 
@@ -18,7 +18,7 @@ const RELEASE_TARGETS = {
   cli: { path: "packages/cli/package.json" },
   pi: { path: "packages/pi/package.json" },
   opencode: { path: "packages/opencode/package.json" },
-  web: { path: "packages/web/package.json" },
+  server: { path: "packages/server/package.json" },
 } as const satisfies Record<string, { path: string }>;
 
 const SUPPORTED_TARGETS = Object.keys(RELEASE_TARGETS).join(", ");
@@ -55,7 +55,7 @@ Examples:
   bun release cli patch          # Release cli with patch bump
   bun release cli pi minor       # Release cli and pi with minor bump
   bun release opencode major     # Release opencode with major bump
-  bun release web patch          # Release web artifacts with patch bump
+  bun release server patch       # Release server artifacts with patch bump
   bun release cli patch --dry    # Dry run, shows what would happen
 `);
 }

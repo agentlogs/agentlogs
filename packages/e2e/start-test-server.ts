@@ -13,16 +13,16 @@ import { Database } from "bun:sqlite";
 import { $ } from "bun";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { spawn } from "child_process";
-import * as schema from "../web/src/db/schema";
+import * as schema from "../server/src/db/schema";
 import path from "path";
 import fs from "fs";
 
 // Log file for server output - read by globalTeardown on failure
 export const SERVER_LOG_FILE = path.join(import.meta.dirname!, ".server-output.log");
 
-const WEB_DIR = path.resolve(import.meta.dirname!, "../web");
+const SERVER_DIR = path.resolve(import.meta.dirname!, "../server");
 const TEST_DB_LOCAL_PATH = "file:.data/test-db.sqlite";
-const TEST_DB_PATH = path.join(WEB_DIR, ".data/test-db.sqlite");
+const TEST_DB_PATH = path.join(SERVER_DIR, ".data/test-db.sqlite");
 
 function deleteExistingDatabase() {
   fs.mkdirSync(path.dirname(TEST_DB_PATH), { recursive: true });
@@ -30,7 +30,7 @@ function deleteExistingDatabase() {
 }
 
 async function applyMigrations() {
-  await $`bun run db:migrate`.cwd(WEB_DIR).env({
+  await $`bun run db:migrate`.cwd(SERVER_DIR).env({
     ...process.env,
     CI: "true",
     DB_LOCAL_PATH: TEST_DB_LOCAL_PATH,
@@ -157,7 +157,7 @@ function startViteServer() {
   // Use --host to bind to all interfaces so subprocess fetch can connect
   // Capture output to log file for debugging on test failure
   const vite = spawn("bun", ["--bun", "vite", "dev", "--port", "3009", "--host"], {
-    cwd: WEB_DIR,
+    cwd: SERVER_DIR,
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, VITE_USE_TEST_DB: "true", DB_LOCAL_PATH: TEST_DB_LOCAL_PATH },
   });

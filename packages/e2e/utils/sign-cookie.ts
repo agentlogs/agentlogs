@@ -17,6 +17,6 @@ export function signCookie(value: string, secret: string): string {
 
 /**
  * The BETTER_AUTH_SECRET used in the test environment.
- * This matches what's in packages/web/.env
+ * This matches what's in packages/server/.env
  */
 export const TEST_AUTH_SECRET = "IPTC+aAEkEWhGW4xsgDtt+qaOnK0gpGBelQhKPcchuw=";

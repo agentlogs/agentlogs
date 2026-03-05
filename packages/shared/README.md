@@ -16,7 +16,7 @@ Shared types, schemas, and utilities used across all packages.
 - File logging disabled in Cloudflare Workers (no fs module)
 - **Path resolution**: Uses `getRepoRoot()` to find monorepo root via `workspaces` field
 
-**Client Logger** (`packages/web/src/lib/client-logger.ts`)
+**Client Logger** (`packages/server/src/lib/client-logger.ts`)
 
 - Intercepts: Browser console, errors, exceptions
 - Transport: Vite HMR WebSocket
@@ -25,7 +25,7 @@ Shared types, schemas, and utilities used across all packages.
 - **Queue**: Buffers up to 100 messages when disconnected
 - **Reentrancy guard**: `isProcessingLog` prevents infinite loops from errors during logging
 
-**Vite Plugins** (`packages/web/src/vite-plugins/`)
+**Vite Plugins** (`packages/server/src/vite-plugins/`)
 
 - `console-to-file.ts`: Server console → file (clears log on startup)
 - `websocket-logger.ts`: Client logs via HMR → file
@@ -55,7 +55,7 @@ grep -E "mkdirSync|appendFileSync" dist/server/index.js
   {json_metadata}
 ```
 
-Components: `web` (server), `web-client` (browser), `cli`, `plugin`
+Components: `server` (server), `web-client` (browser), `cli`, `plugin`
 
 ### Usage
 

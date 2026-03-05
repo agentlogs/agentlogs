@@ -1,5 +1,5 @@
 import type { InferInsertModel } from "drizzle-orm";
-import * as schema from "../../web/src/db/schema";
+import * as schema from "../../server/src/db/schema";
 
 type TranscriptInsert = InferInsertModel<typeof schema.transcripts>;
 type RepoInsert = InferInsertModel<typeof schema.repos>;
