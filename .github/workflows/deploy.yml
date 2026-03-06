@@ -1,0 +1,92 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+jobs:
+  meta:
+    name: Resolve deploy metadata
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      ref: ${{ steps.meta.outputs.ref }}
+      short_sha: ${{ steps.meta.outputs.short_sha }}
+      tags: ${{ steps.meta.outputs.tags }}
+    steps:
+      - name: Resolve image tags
+        id: meta
+        run: |
+          set -euo pipefail
+
+          SHA="${{ github.event.workflow_run.head_sha }}"
+          SHORT_SHA="${SHA:0:12}"
+          OWNER_LOWER="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          IMAGE="ghcr.io/${OWNER_LOWER}/agentlogs"
+
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "ref=$SHA" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "tags<<EOF"
+            echo "${IMAGE}:dev"
+            echo "${IMAGE}:sha-${SHORT_SHA}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  build-image:
+    name: Build and publish deploy image
+    needs: meta
+    uses: ./.github/workflows/server-image.yml
+    with:
+      ref: ${{ needs.meta.outputs.ref }}
+      image: ${{ needs.meta.outputs.image }}
+      tags: ${{ needs.meta.outputs.tags }}
+    secrets: inherit
+
+  deploy:
+    name: Deploy to Dokku
+    needs:
+      - meta
+      - build-image
+    runs-on: ubuntu-latest
+    env:
+      DOKKU_APP: ${{ vars.DOKKU_APP }}
+      DOKKU_HOST: ${{ vars.DOKKU_HOST }}
+      DOKKU_SSH_PORT: ${{ vars.DOKKU_SSH_PORT || '22' }}
+      IMAGE: ${{ needs.meta.outputs.image }}
+      DIGEST: ${{ needs.build-image.outputs.digest }}
+    steps:
+      - name: Configure SSH
+        run: |
+          set -euo pipefail
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.DOKKU_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.DOKKU_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy image on Dokku host
+        run: |
+          set -euo pipefail
+
+          ssh -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -p "$DOKKU_SSH_PORT" \
+            "dokku@${DOKKU_HOST}" \
+            "git:from-image --force ${DOKKU_APP} ${IMAGE}@${DIGEST}"

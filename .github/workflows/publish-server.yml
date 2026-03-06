@@ -114,37 +114,15 @@ jobs:
 
   publish-docker:
     name: Build and publish Docker image
-    runs-on: ubuntu-latest
     needs: meta
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.meta.outputs.ref }}
-
-      - name: Setup QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: packages/server/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ needs.meta.outputs.image }}:${{ needs.meta.outputs.version }}
-            ${{ needs.meta.outputs.image }}:latest
+    uses: ./.github/workflows/server-image.yml
+    with:
+      ref: ${{ needs.meta.outputs.ref }}
+      image: ${{ needs.meta.outputs.image }}
+      tags: |
+        ${{ needs.meta.outputs.image }}:${{ needs.meta.outputs.version }}
+        ${{ needs.meta.outputs.image }}:latest
+    secrets: inherit
 
   create-release:
     name: Create GitHub release
