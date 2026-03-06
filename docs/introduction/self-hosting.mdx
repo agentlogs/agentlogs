@@ -57,7 +57,7 @@ docker run -d \
   -e GITHUB_CLIENT_SECRET=... \
   -e BETTER_AUTH_SECRET=... \
   -e WEB_URL=https://logs.example.com \
-  ghcr.io/agentlogs/agentlogs:latest --migrations
+  ghcr.io/agentlogs/agentlogs:latest
 ```
 
 <Note>Mount `/app/.data` to persist both SQLite data and uploaded transcript blobs.</Note>
@@ -68,10 +68,11 @@ Download a matching binary from the GitHub Releases page (`server-vX.Y.Z` tags),
 
 ```bash
 chmod +x ./agentlogs-server
-./agentlogs-server --migrations
+./agentlogs-server
 ```
 
-- `--migrations` runs embedded migrations, then starts the server
+- By default, the binary runs embedded migrations, then starts the server
+- `--no-migrations` skips startup migrations
 - `--only-migrations` runs migrations and exits
 
 ## 4. Connect Your CLI And Plugins
@@ -86,7 +87,7 @@ Use your public hostname (without `https://`) so your local CLI/plugins upload t
 
 ## 5. Upgrade
 
-When upgrading, deploy a newer image/binary and run with migrations again:
+When upgrading, deploy a newer image/binary and start it again:
 
-- Docker: restart container with the new tag and `--migrations`
-- Binary: replace binary and run `./agentlogs-server --migrations`
+- Docker: restart the container with the new tag; embedded migrations run on startup by default
+- Binary: replace the binary and run `./agentlogs-server`

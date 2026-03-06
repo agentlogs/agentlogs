@@ -77,10 +77,18 @@ Build from source:
 bun run --filter ./packages/server build
 ```
 
-Run with migrations before startup:
+Run the standalone binary:
 
 ```bash
-./dist/agentlogs-server --migrations
+./dist/agentlogs-server
+```
+
+By default, the binary applies embedded migrations before startup.
+
+Skip startup migrations:
+
+```bash
+./dist/agentlogs-server --no-migrations
 ```
 
 Migration-only mode:
@@ -109,7 +117,7 @@ docker run -d \
   -e GITHUB_CLIENT_SECRET=... \
   -e BETTER_AUTH_SECRET=... \
   -e WEB_URL=https://logs.example.com \
-  ghcr.io/agentlogs/agentlogs:latest --migrations
+  ghcr.io/agentlogs/agentlogs:latest
 ```
 
 ### Option B: Release binary
@@ -118,7 +126,7 @@ Download the matching binary asset from GitHub Releases (`server-vX.Y.Z` tags), 
 
 ```bash
 chmod +x ./agentlogs-server
-./agentlogs-server --migrations
+./agentlogs-server
 ```
 
 ## Database Management

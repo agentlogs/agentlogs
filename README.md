@@ -183,7 +183,7 @@ docker run -d \
   -e GITHUB_CLIENT_SECRET=... \
   -e BETTER_AUTH_SECRET=... \
   -e WEB_URL=https://logs.example.com \
-  ghcr.io/agentlogs/agentlogs:latest --migrations
+  ghcr.io/agentlogs/agentlogs:latest
 ```
 
 ### Option B: Deploy With A Single Binary
@@ -192,10 +192,10 @@ Download the correct binary for your OS/architecture from GitHub Releases:
 
 ```bash
 chmod +x ./agentlogs-server
-./agentlogs-server --migrations
+./agentlogs-server
 ```
 
-`--migrations` applies embedded migrations before startup. Use `--only-migrations` for migration-only runs.
+By default, the standalone server applies embedded migrations before startup. Use `--no-migrations` to skip them or `--only-migrations` to run them and exit.
 
 ### Connect Your Agents To Your Host
 
