@@ -16,7 +16,7 @@ export function signCookie(value: string, secret: string): string {
 }
 
 /**
- * The BETTER_AUTH_SECRET used in the test environment.
- * This matches what's in packages/server/.env
+ * The BETTER_AUTH_SECRET used by the e2e test server.
+ * Keeping this in code makes the suite independent of local .env files.
  */
 export const TEST_AUTH_SECRET = "IPTC+aAEkEWhGW4xsgDtt+qaOnK0gpGBelQhKPcchuw=";

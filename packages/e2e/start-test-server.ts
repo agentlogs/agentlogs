@@ -16,6 +16,7 @@ import { spawn } from "child_process";
 import * as schema from "../server/src/db/schema";
 import path from "path";
 import fs from "fs";
+import { TEST_AUTH_SECRET } from "./utils/sign-cookie";
 
 // Log file for server output - read by globalTeardown on failure
 export const SERVER_LOG_FILE = path.join(import.meta.dirname!, ".server-output.log");
@@ -23,6 +24,10 @@ export const SERVER_LOG_FILE = path.join(import.meta.dirname!, ".server-output.l
 const SERVER_DIR = path.resolve(import.meta.dirname!, "../server");
 const TEST_DB_LOCAL_PATH = "file:.data/test-db.sqlite";
 const TEST_DB_PATH = path.join(SERVER_DIR, ".data/test-db.sqlite");
+const TEST_SERVER_PORT = "3009";
+const TEST_SERVER_URL = `http://localhost:${TEST_SERVER_PORT}`;
+const TEST_GITHUB_CLIENT_ID = "e2e-github-client-id";
+const TEST_GITHUB_CLIENT_SECRET = "e2e-github-client-secret";
 
 function deleteExistingDatabase() {
   fs.mkdirSync(path.dirname(TEST_DB_PATH), { recursive: true });
@@ -156,10 +161,18 @@ function startViteServer() {
   // Start vite dev in the foreground on port 3009 (this will keep running)
   // Use --host to bind to all interfaces so subprocess fetch can connect
   // Capture output to log file for debugging on test failure
-  const vite = spawn("bun", ["--bun", "vite", "dev", "--port", "3009", "--host"], {
+  const vite = spawn("bun", ["--bun", "vite", "dev", "--port", TEST_SERVER_PORT, "--host"], {
     cwd: SERVER_DIR,
     stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, VITE_USE_TEST_DB: "true", DB_LOCAL_PATH: TEST_DB_LOCAL_PATH },
+    env: {
+      ...process.env,
+      VITE_USE_TEST_DB: "true",
+      DB_LOCAL_PATH: TEST_DB_LOCAL_PATH,
+      BETTER_AUTH_SECRET: TEST_AUTH_SECRET,
+      GITHUB_CLIENT_ID: TEST_GITHUB_CLIENT_ID,
+      GITHUB_CLIENT_SECRET: TEST_GITHUB_CLIENT_SECRET,
+      WEB_URL: TEST_SERVER_URL,
+    },
   });
 
   // Write stdout and stderr to log file

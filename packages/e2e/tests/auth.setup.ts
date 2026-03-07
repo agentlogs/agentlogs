@@ -2,7 +2,8 @@
  * Auth setup for Playwright tests.
  *
  * This creates a storage state file with the session cookie that can be reused
- * across tests. The session is pre-seeded by start-test-server.ts before vite starts.
+ * across tests. The session and auth env are pre-seeded by start-test-server.ts
+ * before vite starts.
  */
 import { test as setup } from "@playwright/test";
 import path from "path";
