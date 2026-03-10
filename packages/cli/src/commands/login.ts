@@ -35,9 +35,16 @@ export async function loginCommand(options: LoginCommandOptions): Promise<void> 
 
     // Open browser with the complete URL
     const urlToOpen = verification_uri_complete || verification_uri;
+    const isHeadless = !process.stdout.isTTY || !!process.env.CI;
+
     if (urlToOpen) {
-      console.log("🌐 Opening browser...");
-      await open(urlToOpen);
+      if (isHeadless) {
+        console.log("🖥️  Headless environment detected — open this URL in your browser:");
+        console.log(`\n  ${urlToOpen}\n`);
+      } else {
+        console.log("🌐 Opening browser...");
+        await open(urlToOpen);
+      }
     }
 
     console.log(`⏳ Waiting for authorization... (polling every ${interval}s)`);
