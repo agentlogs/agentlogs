@@ -91,6 +91,7 @@ const IGNORED_USER_PREFIXES = [
 
 const IMAGE_PLACEHOLDER_PATTERN = /^<image name=\[Image #\d+\]>$/i;
 const IMAGE_PLACEHOLDER_REGEXES = [/<image[^>]*>/gi, /<\/image>/gi, /\[\s*image\s*#?\d+\s*\]/gi];
+const ALLOWED_DATA_IMAGE_MEDIA_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"]);
 
 /**
  * Convert a Codex transcript from an in-memory event array.
@@ -652,7 +653,10 @@ function extractImageReference(
     return null;
   }
 
-  const mediaType = match[1] || "image/unknown";
+  const mediaType = (match[1] || "").trim().toLowerCase();
+  if (!ALLOWED_DATA_IMAGE_MEDIA_TYPES.has(mediaType)) {
+    return null;
+  }
   const base64Data = match[2];
   if (!base64Data) {
     return null;

@@ -1,7 +1,7 @@
 import path from "node:path";
 import { describe, expect, test } from "bun:test";
 import type { ConversionResult } from "./claudecode";
-import { convertCodexFile } from "./codex";
+import { convertCodexFile, convertCodexTranscript } from "./codex";
 import { formatCwdWithTilde } from "./paths";
 import type { LiteLLMModelPricing } from "./pricing";
 
@@ -182,6 +182,35 @@ describe("convertCodexFile", () => {
         },
       }
       `);
+  });
+
+  test("rejects unsafe data URL media types for images", () => {
+    const safePng = "iVBORw0KGgo=";
+    const unsafeHtml = Buffer.from("<script>alert(1)</script>").toString("base64");
+
+    const transcript = convertCodexTranscript([
+      {
+        type: "response_item",
+        payload: {
+          type: "message",
+          role: "user",
+          content: [
+            { type: "input_image", image_url: `data:image/png;base64,${safePng}` },
+            { type: "input_image", image_url: `data:text/html;base64,${unsafeHtml}` },
+            { type: "input_image", image_url: "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=" },
+          ],
+        },
+      },
+    ]);
+
+    expect(transcript).toBeTruthy();
+    expect(transcript?.blobs.size).toBe(1);
+
+    const firstMessage = transcript?.transcript.messages[0];
+    expect(firstMessage?.type).toBe("user");
+    expect((firstMessage as { images?: Array<{ mediaType: string }> }).images).toEqual([
+      expect.objectContaining({ mediaType: "image/png" }),
+    ]);
   });
 
   test("images.jsonl", async () => {
