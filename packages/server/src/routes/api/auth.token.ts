@@ -5,11 +5,84 @@ import * as queries from "../../db/queries";
 import { session, user } from "../../db/schema";
 import { env } from "../../lib/env";
 
+interface NormalizedProfile {
+  email: string;
+  name: string;
+  username: string;
+  image: string | null;
+}
+
+interface OAuthProvider {
+  id: string;
+  userinfoUrl: string;
+  normalizeProfile: (raw: Record<string, unknown>) => NormalizedProfile | null;
+}
+
+/** Returns the list of OAuth providers that are currently configured. */
+function getConfiguredProviders(): OAuthProvider[] {
+  const providers: OAuthProvider[] = [];
+
+  if (env.GITLAB_CLIENT_ID && env.GITLAB_CLIENT_SECRET) {
+    providers.push({
+      id: "gitlab",
+      userinfoUrl: `${env.GITLAB_ISSUER}/api/v4/user`,
+      normalizeProfile: (raw) => {
+        const email = (raw.email as string) || (raw.public_email as string);
+        if (!email) return null;
+        return {
+          email,
+          name: (raw.name as string) || (raw.username as string) || email,
+          username: ((raw.username as string) || email).toLowerCase(),
+          image: (raw.avatar_url as string) || null,
+        };
+      },
+    });
+  }
+
+  if (env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET) {
+    providers.push({
+      id: "github",
+      userinfoUrl: "https://api.github.com/user",
+      normalizeProfile: (raw) => {
+        const email = raw.email as string;
+        if (!email) return null;
+        return {
+          email,
+          name: (raw.name as string) || (raw.login as string) || email,
+          username: ((raw.login as string) || email).toLowerCase(),
+          image: (raw.avatar_url as string) || null,
+        };
+      },
+    });
+  }
+
+  return providers;
+}
+
+/** Try each configured provider's userinfo endpoint with the token. Returns the first match. */
+async function resolveProfile(token: string): Promise<NormalizedProfile | null> {
+  const providers = getConfiguredProviders();
+  for (const provider of providers) {
+    try {
+      const resp = await fetch(provider.userinfoUrl, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) continue;
+      const raw = (await resp.json()) as Record<string, unknown>;
+      const profile = provider.normalizeProfile(raw);
+      if (profile) return profile;
+    } catch {
+      // provider unreachable — try next
+    }
+  }
+  return null;
+}
+
 export const Route = createFileRoute("/api/auth/token")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        if (!env.GITLAB_CLIENT_ID || !env.GITLAB_CLIENT_SECRET) {
+        if (getConfiguredProviders().length === 0) {
           return new Response(JSON.stringify({ error: "token exchange is not enabled on this server" }), { status: 404 });
         }
 
@@ -18,23 +91,9 @@ export const Route = createFileRoute("/api/auth/token")({
           return new Response(JSON.stringify({ error: "token required" }), { status: 400 });
         }
 
-        // Verify token via the configured OIDC provider's userinfo endpoint
-        const providerResp = await fetch(`${env.GITLAB_ISSUER}/api/v4/user`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!providerResp.ok) {
+        const profile = await resolveProfile(token);
+        if (!profile) {
           return new Response(JSON.stringify({ error: "invalid token" }), { status: 401 });
-        }
-        const profile = (await providerResp.json()) as {
-          id: number;
-          username: string;
-          email: string;
-          name: string;
-          avatar_url?: string;
-        };
-
-        if (!profile.email) {
-          return new Response(JSON.stringify({ error: "no email in provider profile" }), { status: 400 });
         }
 
         const db = createDrizzle(env.DB);
@@ -55,11 +114,11 @@ export const Route = createFileRoute("/api/auth/token")({
             .insert(user)
             .values({
               id: crypto.randomUUID(),
-              name: profile.name || profile.username,
-              username: profile.username.toLowerCase(),
+              name: profile.name,
+              username: profile.username,
               email: profile.email,
               emailVerified: true,
-              image: profile.avatar_url || null,
+              image: profile.image,
               role,
               createdAt: new Date(),
               updatedAt: new Date(),
