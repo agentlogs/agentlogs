@@ -4,11 +4,46 @@ import { setTokenForEnv, upsertEnvironment, type EnvName } from "../config";
 
 export interface LoginCommandOptions {
   hostname: string;
+  token?: string;
 }
 
 export async function loginCommand(options: LoginCommandOptions): Promise<void> {
   try {
     const { host: envName, baseURL } = resolveServer(options.hostname);
+
+    if (options.token) {
+      console.log("🔐 GitLab token exchange...");
+      console.log(`🌐 Server: ${baseURL}`);
+
+      const resp = await fetch(`${baseURL}/api/auth/gitlab-token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: options.token }),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        console.error("❌ Token exchange failed:", text);
+        process.exit(1);
+      }
+
+      const { token, user } = (await resp.json()) as {
+        token: string;
+        user: { id: string; email: string; name: string };
+      };
+
+      await setTokenForEnv(envName, user.email, token);
+      upsertEnvironment({
+        name: envName,
+        baseURL,
+        user: { id: user.id, email: user.email, name: user.name },
+        lastLoginTime: new Date().toISOString(),
+      });
+
+      console.log(`✅ Logged in as ${user.name} (${user.email})`);
+      console.log(`🌐 Environment: ${envName}`);
+      process.exit(0);
+    }
 
     console.log("🔐 AgentLogs Device Authorization");
     console.log(`🌐 Server: ${baseURL}`);

@@ -38,8 +38,9 @@ program
   .command("login")
   .description("Authenticate with AgentLogs using device authorization")
   .argument("<hostname>", "AgentLogs server hostname, e.g. agentlogs.ai")
-  .action(async (hostname: string) => {
-    await loginCommand({ hostname });
+  .option("--token <token>", "GitLab access token for direct authentication (skips browser)")
+  .action(async (hostname: string, options: { token?: string }) => {
+    await loginCommand({ hostname, token: options.token });
   });
 
 program
