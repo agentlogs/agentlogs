@@ -20,7 +20,7 @@ import { Route as ApiCommitTrackRouteImport } from './routes/api/commit-track'
 import { Route as AppAppIndexRouteImport } from './routes/_app/app/index'
 import { Route as ApiOgIdRouteImport } from './routes/api/og.$id'
 import { Route as ApiBlobsSha256RouteImport } from './routes/api/blobs.$sha256'
-import { Route as ApiAuthGitlabTokenRouteImport } from './routes/api/auth.gitlab-token'
+import { Route as ApiAuthTokenRouteImport } from './routes/api/auth.token'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
 import { Route as AppSSessionIdRouteImport } from './routes/_app/s.$sessionId'
 import { Route as AppJoinCodeRouteImport } from './routes/_app/join.$code'
@@ -85,9 +85,9 @@ const ApiBlobsSha256Route = ApiBlobsSha256RouteImport.update({
   path: '/api/blobs/$sha256',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiAuthGitlabTokenRoute = ApiAuthGitlabTokenRouteImport.update({
-  id: '/api/auth/gitlab-token',
-  path: '/api/auth/gitlab-token',
+const ApiAuthTokenRoute = ApiAuthTokenRouteImport.update({
+  id: '/api/auth/token',
+  path: '/api/auth/token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -150,7 +150,7 @@ export interface FileRoutesByFullPath {
   '/join/$code': typeof AppJoinCodeRoute
   '/s/$sessionId': typeof AppSSessionIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/api/auth/gitlab-token': typeof ApiAuthGitlabTokenRoute
+  '/api/auth/token': typeof ApiAuthTokenRoute
   '/api/blobs/$sha256': typeof ApiBlobsSha256Route
   '/api/og/$id': typeof ApiOgIdRoute
   '/app/': typeof AppAppIndexRoute
@@ -172,7 +172,7 @@ export interface FileRoutesByTo {
   '/join/$code': typeof AppJoinCodeRoute
   '/s/$sessionId': typeof AppSSessionIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/api/auth/gitlab-token': typeof ApiAuthGitlabTokenRoute
+  '/api/auth/token': typeof ApiAuthTokenRoute
   '/api/blobs/$sha256': typeof ApiBlobsSha256Route
   '/api/og/$id': typeof ApiOgIdRoute
   '/app': typeof AppAppIndexRoute
@@ -196,7 +196,7 @@ export interface FileRoutesById {
   '/_app/join/$code': typeof AppJoinCodeRoute
   '/_app/s/$sessionId': typeof AppSSessionIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/api/auth/gitlab-token': typeof ApiAuthGitlabTokenRoute
+  '/api/auth/token': typeof ApiAuthTokenRoute
   '/api/blobs/$sha256': typeof ApiBlobsSha256Route
   '/api/og/$id': typeof ApiOgIdRoute
   '/_app/app/': typeof AppAppIndexRoute
@@ -220,7 +220,7 @@ export interface FileRouteTypes {
     | '/join/$code'
     | '/s/$sessionId'
     | '/api/auth/$'
-    | '/api/auth/gitlab-token'
+    | '/api/auth/token'
     | '/api/blobs/$sha256'
     | '/api/og/$id'
     | '/app/'
@@ -242,7 +242,7 @@ export interface FileRouteTypes {
     | '/join/$code'
     | '/s/$sessionId'
     | '/api/auth/$'
-    | '/api/auth/gitlab-token'
+    | '/api/auth/token'
     | '/api/blobs/$sha256'
     | '/api/og/$id'
     | '/app'
@@ -265,7 +265,7 @@ export interface FileRouteTypes {
     | '/_app/join/$code'
     | '/_app/s/$sessionId'
     | '/api/auth/$'
-    | '/api/auth/gitlab-token'
+    | '/api/auth/token'
     | '/api/blobs/$sha256'
     | '/api/og/$id'
     | '/_app/app/'
@@ -285,7 +285,7 @@ export interface RootRouteChildren {
   ApiTranscriptsRoute: typeof ApiTranscriptsRoute
   AuthSplatRoute: typeof AuthSplatRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
-  ApiAuthGitlabTokenRoute: typeof ApiAuthGitlabTokenRoute
+  ApiAuthTokenRoute: typeof ApiAuthTokenRoute
   ApiBlobsSha256Route: typeof ApiBlobsSha256Route
   ApiOgIdRoute: typeof ApiOgIdRoute
   ApiAdminTranscriptUnifiedIdRoute: typeof ApiAdminTranscriptUnifiedIdRoute
@@ -370,11 +370,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiBlobsSha256RouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/auth/gitlab-token': {
-      id: '/api/auth/gitlab-token'
-      path: '/api/auth/gitlab-token'
-      fullPath: '/api/auth/gitlab-token'
-      preLoaderRoute: typeof ApiAuthGitlabTokenRouteImport
+    '/api/auth/token': {
+      id: '/api/auth/token'
+      path: '/api/auth/token'
+      fullPath: '/api/auth/token'
+      preLoaderRoute: typeof ApiAuthTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -477,7 +477,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiTranscriptsRoute: ApiTranscriptsRoute,
   AuthSplatRoute: AuthSplatRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
-  ApiAuthGitlabTokenRoute: ApiAuthGitlabTokenRoute,
+  ApiAuthTokenRoute: ApiAuthTokenRoute,
   ApiBlobsSha256Route: ApiBlobsSha256Route,
   ApiOgIdRoute: ApiOgIdRoute,
   ApiAdminTranscriptUnifiedIdRoute: ApiAdminTranscriptUnifiedIdRoute,

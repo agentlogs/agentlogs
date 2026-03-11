@@ -73,8 +73,7 @@ function buildAuth() {
       user: {
         create: {
           after: async (newUser) => {
-            const dbConn = createDrizzle(env.DB);
-            const userCount = await getUserCount(dbConn);
+            const userCount = await getUserCount(db);
             let role: UserRole;
             if (userCount === 1) {
               role = "admin";
@@ -83,7 +82,7 @@ function buildAuth() {
             } else {
               return;
             }
-            await dbConn.update(user).set({ role }).where(eq(user.id, newUser.id));
+            await db.update(user).set({ role }).where(eq(user.id, newUser.id));
           },
         },
       },

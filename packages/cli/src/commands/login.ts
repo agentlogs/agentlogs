@@ -12,10 +12,10 @@ export async function loginCommand(options: LoginCommandOptions): Promise<void> 
     const { host: envName, baseURL } = resolveServer(options.hostname);
 
     if (options.token) {
-      console.log("🔐 GitLab token exchange...");
+      console.log("🔐 Token exchange...");
       console.log(`🌐 Server: ${baseURL}`);
 
-      const resp = await fetch(`${baseURL}/api/auth/gitlab-token`, {
+      const resp = await fetch(`${baseURL}/api/auth/token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: options.token }),

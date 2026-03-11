@@ -5,7 +5,7 @@ import * as queries from "../../db/queries";
 import { session, user } from "../../db/schema";
 import { env } from "../../lib/env";
 
-export const Route = createFileRoute("/api/auth/gitlab-token")({
+export const Route = createFileRoute("/api/auth/token")({
   server: {
     handlers: {
       POST: async ({ request }) => {
@@ -14,14 +14,14 @@ export const Route = createFileRoute("/api/auth/gitlab-token")({
           return new Response(JSON.stringify({ error: "token required" }), { status: 400 });
         }
 
-        // Verify token with GitLab
-        const gitlabResp = await fetch(`${env.GITLAB_ISSUER}/api/v4/user`, {
+        // Verify token via the configured OIDC provider's userinfo endpoint
+        const providerResp = await fetch(`${env.GITLAB_ISSUER}/api/v4/user`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!gitlabResp.ok) {
+        if (!providerResp.ok) {
           return new Response(JSON.stringify({ error: "invalid token" }), { status: 401 });
         }
-        const profile = (await gitlabResp.json()) as {
+        const profile = (await providerResp.json()) as {
           id: number;
           username: string;
           email: string;
@@ -30,7 +30,7 @@ export const Route = createFileRoute("/api/auth/gitlab-token")({
         };
 
         if (!profile.email) {
-          return new Response(JSON.stringify({ error: "no email in GitLab profile" }), { status: 400 });
+          return new Response(JSON.stringify({ error: "no email in provider profile" }), { status: 400 });
         }
 
         const db = createDrizzle(env.DB);
