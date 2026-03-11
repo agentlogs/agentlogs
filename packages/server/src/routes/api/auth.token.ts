@@ -9,6 +9,10 @@ export const Route = createFileRoute("/api/auth/token")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        if (!env.GITLAB_CLIENT_ID || !env.GITLAB_CLIENT_SECRET) {
+          return new Response(JSON.stringify({ error: "token exchange is not enabled on this server" }), { status: 404 });
+        }
+
         const { token } = (await request.json()) as { token?: string };
         if (!token) {
           return new Response(JSON.stringify({ error: "token required" }), { status: 400 });
