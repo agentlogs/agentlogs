@@ -101,4 +101,8 @@ export const env = {
   OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || "",
   RESEND_API_KEY: process.env.RESEND_API_KEY || "",
   WEB_URL: webUrl,
+  GITLAB_CLIENT_ID: process.env.GITLAB_CLIENT_ID || "",
+  GITLAB_CLIENT_SECRET: process.env.GITLAB_CLIENT_SECRET || "",
+  GITLAB_ISSUER: process.env.GITLAB_ISSUER || "https://gitlab.com",
+  WAITLIST_ENABLED: process.env.WAITLIST_ENABLED !== "false",
 };

@@ -16,23 +16,36 @@ export const Route = createFileRoute("/auth/$")({
         const callbackURL = url.searchParams.get("callbackURL") ?? "/app";
 
         const auth = createAuth();
-        const result = await auth.api.signInSocial({
-          body: { provider, callbackURL },
-          headers: request.headers,
-          returnHeaders: true,
-        });
 
-        if (!result.response?.url) {
-          throw redirect({ to: "/" });
+        if (provider === "github") {
+          const result = await auth.api.signInSocial({
+            body: { provider, callbackURL },
+            headers: request.headers,
+            returnHeaders: true,
+          });
+
+          if (!result.response?.url) {
+            throw redirect({ to: "/" });
+          }
+
+          return new Response(null, {
+            status: 302,
+            headers: {
+              ...Object.fromEntries(result.headers?.entries() ?? []),
+              Location: result.response.url,
+            },
+          });
         }
 
-        return new Response(null, {
-          status: 302,
-          headers: {
-            ...Object.fromEntries(result.headers?.entries() ?? []),
-            Location: result.response.url,
-          },
+        // genericOAuth providers (e.g. gitlab) — forward to BetterAuth handler
+        const forwardHeaders = new Headers(request.headers);
+        forwardHeaders.set("Content-Type", "application/json");
+        const betterAuthReq = new Request(new URL("/api/auth/sign-in/oauth2", request.url), {
+          method: "POST",
+          headers: forwardHeaders,
+          body: JSON.stringify({ providerId: provider, callbackURL }),
         });
+        return auth.handler(betterAuthReq);
       },
     },
   },

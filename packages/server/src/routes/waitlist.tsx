@@ -1,5 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { Logo } from "../components/icons/source-icons";
+import { getAuthProviders } from "../lib/server-functions";
 
 export const Route = createFileRoute("/waitlist")({
   beforeLoad: ({ context }) => {
@@ -9,11 +10,16 @@ export const Route = createFileRoute("/waitlist")({
     }
     return { session };
   },
+  loader: async () => {
+    const providers = await getAuthProviders();
+    return { providers };
+  },
   component: WaitlistPage,
 });
 
 function WaitlistPage() {
   const { session } = Route.useRouteContext();
+  const { providers } = Route.useLoaderData();
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
@@ -44,13 +50,25 @@ function WaitlistPage() {
         ) : (
           <>
             <h1 className="font-display text-3xl tracking-tight sm:text-4xl">Join the Waitlist</h1>
-            <p className="mt-3 max-w-md text-muted-foreground">Sign in with GitHub to join the waitlist.</p>
-            <a
-              href="/auth/github"
-              className="mt-6 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              Sign in with GitHub
-            </a>
+            <p className="mt-3 max-w-md text-muted-foreground">Sign in to join the waitlist.</p>
+            <div className="mt-6 flex flex-col gap-3">
+              {providers.github && (
+                <a
+                  href="/auth/github"
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  Sign in with GitHub
+                </a>
+              )}
+              {providers.gitlab && (
+                <a
+                  href="/auth/gitlab"
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  Sign in with GitLab
+                </a>
+              )}
+            </div>
           </>
         )}
       </main>

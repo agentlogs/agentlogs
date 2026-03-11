@@ -1040,3 +1040,8 @@ export async function canAccessPublicBlob(db: DrizzleDB, blobSha256: string) {
 
   return result !== null;
 }
+
+export async function getUserCount(db: DrizzleDB): Promise<number> {
+  const result = await db.select({ count: count() }).from(user);
+  return result[0]?.count ?? 0;
+}

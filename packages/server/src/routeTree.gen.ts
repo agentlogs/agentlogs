@@ -20,6 +20,7 @@ import { Route as ApiCommitTrackRouteImport } from './routes/api/commit-track'
 import { Route as AppAppIndexRouteImport } from './routes/_app/app/index'
 import { Route as ApiOgIdRouteImport } from './routes/api/og.$id'
 import { Route as ApiBlobsSha256RouteImport } from './routes/api/blobs.$sha256'
+import { Route as ApiAuthGitlabTokenRouteImport } from './routes/api/auth.gitlab-token'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
 import { Route as AppSSessionIdRouteImport } from './routes/_app/s.$sessionId'
 import { Route as AppJoinCodeRouteImport } from './routes/_app/join.$code'
@@ -84,6 +85,11 @@ const ApiBlobsSha256Route = ApiBlobsSha256RouteImport.update({
   path: '/api/blobs/$sha256',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAuthGitlabTokenRoute = ApiAuthGitlabTokenRouteImport.update({
+  id: '/api/auth/gitlab-token',
+  path: '/api/auth/gitlab-token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -144,6 +150,7 @@ export interface FileRoutesByFullPath {
   '/join/$code': typeof AppJoinCodeRoute
   '/s/$sessionId': typeof AppSSessionIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/auth/gitlab-token': typeof ApiAuthGitlabTokenRoute
   '/api/blobs/$sha256': typeof ApiBlobsSha256Route
   '/api/og/$id': typeof ApiOgIdRoute
   '/app/': typeof AppAppIndexRoute
@@ -165,6 +172,7 @@ export interface FileRoutesByTo {
   '/join/$code': typeof AppJoinCodeRoute
   '/s/$sessionId': typeof AppSSessionIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/auth/gitlab-token': typeof ApiAuthGitlabTokenRoute
   '/api/blobs/$sha256': typeof ApiBlobsSha256Route
   '/api/og/$id': typeof ApiOgIdRoute
   '/app': typeof AppAppIndexRoute
@@ -188,6 +196,7 @@ export interface FileRoutesById {
   '/_app/join/$code': typeof AppJoinCodeRoute
   '/_app/s/$sessionId': typeof AppSSessionIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/auth/gitlab-token': typeof ApiAuthGitlabTokenRoute
   '/api/blobs/$sha256': typeof ApiBlobsSha256Route
   '/api/og/$id': typeof ApiOgIdRoute
   '/_app/app/': typeof AppAppIndexRoute
@@ -211,6 +220,7 @@ export interface FileRouteTypes {
     | '/join/$code'
     | '/s/$sessionId'
     | '/api/auth/$'
+    | '/api/auth/gitlab-token'
     | '/api/blobs/$sha256'
     | '/api/og/$id'
     | '/app/'
@@ -232,6 +242,7 @@ export interface FileRouteTypes {
     | '/join/$code'
     | '/s/$sessionId'
     | '/api/auth/$'
+    | '/api/auth/gitlab-token'
     | '/api/blobs/$sha256'
     | '/api/og/$id'
     | '/app'
@@ -254,6 +265,7 @@ export interface FileRouteTypes {
     | '/_app/join/$code'
     | '/_app/s/$sessionId'
     | '/api/auth/$'
+    | '/api/auth/gitlab-token'
     | '/api/blobs/$sha256'
     | '/api/og/$id'
     | '/_app/app/'
@@ -273,6 +285,7 @@ export interface RootRouteChildren {
   ApiTranscriptsRoute: typeof ApiTranscriptsRoute
   AuthSplatRoute: typeof AuthSplatRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiAuthGitlabTokenRoute: typeof ApiAuthGitlabTokenRoute
   ApiBlobsSha256Route: typeof ApiBlobsSha256Route
   ApiOgIdRoute: typeof ApiOgIdRoute
   ApiAdminTranscriptUnifiedIdRoute: typeof ApiAdminTranscriptUnifiedIdRoute
@@ -355,6 +368,13 @@ declare module '@tanstack/react-router' {
       path: '/api/blobs/$sha256'
       fullPath: '/api/blobs/$sha256'
       preLoaderRoute: typeof ApiBlobsSha256RouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/gitlab-token': {
+      id: '/api/auth/gitlab-token'
+      path: '/api/auth/gitlab-token'
+      fullPath: '/api/auth/gitlab-token'
+      preLoaderRoute: typeof ApiAuthGitlabTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -457,6 +477,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiTranscriptsRoute: ApiTranscriptsRoute,
   AuthSplatRoute: AuthSplatRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiAuthGitlabTokenRoute: ApiAuthGitlabTokenRoute,
   ApiBlobsSha256Route: ApiBlobsSha256Route,
   ApiOgIdRoute: ApiOgIdRoute,
   ApiAdminTranscriptUnifiedIdRoute: ApiAdminTranscriptUnifiedIdRoute,
@@ -464,12 +485,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}
