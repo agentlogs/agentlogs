@@ -37,10 +37,10 @@ export const Route = createFileRoute("/auth/$")({
           });
         }
 
-        // genericOAuth providers (e.g. gitlab) — forward to BetterAuth handler
+        // genericOAuth providers (e.g. gitlab) — forward to BetterAuth genericOAuth handler
         const forwardHeaders = new Headers(request.headers);
         forwardHeaders.set("Content-Type", "application/json");
-        const betterAuthReq = new Request(new URL("/api/auth/sign-in/oauth2", request.url), {
+        const betterAuthReq = new Request(new URL("/api/auth/sign-in/generic-oauth", request.url), {
           method: "POST",
           headers: forwardHeaders,
           body: JSON.stringify({ providerId: provider, callbackURL }),

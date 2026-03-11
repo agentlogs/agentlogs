@@ -21,16 +21,32 @@ export async function loginCommand(options: LoginCommandOptions): Promise<void> 
         body: JSON.stringify({ token: options.token }),
       });
 
+      const responseText = await resp.text();
+
       if (!resp.ok) {
-        const text = await resp.text();
-        console.error("❌ Token exchange failed:", text);
+        // Try to extract a clean error message from JSON, fall back to raw text
+        let errorMessage = responseText;
+        try {
+          const errorJson = JSON.parse(responseText) as { error?: string; message?: string };
+          errorMessage = errorJson.error ?? errorJson.message ?? responseText;
+        } catch {
+          // Not JSON — show HTTP status + truncated body
+          errorMessage = `HTTP ${resp.status} ${resp.statusText}`;
+          if (responseText && responseText.length < 200) errorMessage += `: ${responseText}`;
+        }
+        console.error("❌ Token exchange failed:", errorMessage);
         process.exit(1);
       }
 
-      const { token, user } = (await resp.json()) as {
-        token: string;
-        user: { id: string; email: string; name: string };
-      };
+      let parsed: { token: string; user: { id: string; email: string; name: string } };
+      try {
+        parsed = JSON.parse(responseText) as typeof parsed;
+      } catch {
+        console.error("❌ Token exchange failed: server returned unexpected response (not JSON)");
+        console.error("   Response:", responseText.slice(0, 200));
+        process.exit(1);
+      }
+      const { token, user } = parsed;
 
       await setTokenForEnv(envName, user.email, token);
       upsertEnvironment({
