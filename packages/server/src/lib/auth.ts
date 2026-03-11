@@ -5,8 +5,8 @@ import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { eq } from "drizzle-orm";
 import { env } from "@/lib/env";
 import { createDrizzle } from "../db";
-import { getUserCount } from "../db/queries";
-import { user, type UserRole } from "../db/schema";
+import { promoteToAdminIfFirst } from "../db/queries";
+import { user } from "../db/schema";
 import { logger } from "./logger";
 
 function buildAuth() {
@@ -73,16 +73,16 @@ function buildAuth() {
       user: {
         create: {
           after: async (newUser) => {
-            const userCount = await getUserCount(db);
-            let role: UserRole;
-            if (userCount === 1) {
-              role = "admin";
-            } else if (!env.WAITLIST_ENABLED) {
-              role = "user";
-            } else {
-              return;
+            // Try atomic admin promotion first (race-safe: only one concurrent
+            // caller can win the NOT EXISTS check)
+            const promoted = await promoteToAdminIfFirst(db, newUser.id);
+            if (promoted) return;
+
+            // Not the first user — apply waitlist policy
+            if (!env.WAITLIST_ENABLED) {
+              await db.update(user).set({ role: "user" }).where(eq(user.id, newUser.id));
             }
-            await db.update(user).set({ role }).where(eq(user.id, newUser.id));
+            // else: leave schema default "waitlist" in place
           },
         },
       },

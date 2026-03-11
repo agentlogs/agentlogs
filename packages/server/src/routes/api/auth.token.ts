@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { eq } from "drizzle-orm";
 import { createDrizzle } from "../../db";
-import * as queries from "../../db/queries";
+import { promoteToAdminIfFirst } from "../../db/queries";
 import { session, user } from "../../db/schema";
 import { env } from "../../lib/env";
 
@@ -107,9 +107,10 @@ export const Route = createFileRoute("/api/auth/token")({
           .then((r) => r[0]);
 
         if (!existingUser) {
-          const userCount = await queries.getUserCount(db);
-          const role = userCount === 0 ? "admin" : env.WAITLIST_ENABLED ? "waitlist" : "user";
-
+          // Insert with default role first, then atomically promote to admin if
+          // no admin exists yet (race-safe: concurrent first-time logins cannot
+          // both win the NOT EXISTS check)
+          const defaultRole = env.WAITLIST_ENABLED ? "waitlist" : "user";
           const newUsers = await db
             .insert(user)
             .values({
@@ -119,12 +120,18 @@ export const Route = createFileRoute("/api/auth/token")({
               email: profile.email,
               emailVerified: true,
               image: profile.image,
-              role,
+              role: defaultRole,
               createdAt: new Date(),
               updatedAt: new Date(),
             })
             .returning();
           existingUser = newUsers[0];
+
+          if (existingUser) {
+            await promoteToAdminIfFirst(db, existingUser.id);
+            // Re-fetch to get the potentially updated role
+            existingUser = await db.select().from(user).where(eq(user.id, existingUser.id)).limit(1).then((r) => r[0]);
+          }
         }
 
         if (!existingUser) {

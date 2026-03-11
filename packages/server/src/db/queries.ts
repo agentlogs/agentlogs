@@ -1045,3 +1045,25 @@ export async function getUserCount(db: DrizzleDB): Promise<number> {
   const result = await db.select({ count: count() }).from(user);
   return result[0]?.count ?? 0;
 }
+
+/**
+ * Atomically promotes a user to admin if no admin exists yet.
+ *
+ * Uses a conditional UPDATE … WHERE NOT EXISTS so that concurrent callers
+ * (e.g. two simultaneous first-time logins on a fresh instance) cannot both
+ * win the race: only one UPDATE will find zero existing admins and succeed;
+ * the rest are no-ops.
+ */
+export async function promoteToAdminIfFirst(db: DrizzleDB, userId: string): Promise<boolean> {
+  const result = await db
+    .update(user)
+    .set({ role: "admin" })
+    .where(
+      and(
+        eq(user.id, userId),
+        sql`NOT EXISTS (SELECT 1 FROM ${user} WHERE ${user.role} = 'admin' AND ${user.id} != ${userId})`,
+      ),
+    )
+    .returning({ id: user.id });
+  return result.length > 0;
+}
