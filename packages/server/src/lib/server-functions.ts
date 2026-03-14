@@ -1201,10 +1201,3 @@ export const getHomePageData = createServerFn({ method: "GET" }).handler(async (
 
   return { initialData, dailyActivity, repos };
 });
-
-export const getAuthProviders = createServerFn({ method: "GET" }).handler(async () => {
-  return {
-    github: Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET),
-    gitlab: Boolean(env.GITLAB_CLIENT_ID && env.GITLAB_CLIENT_SECRET),
-  };
-});

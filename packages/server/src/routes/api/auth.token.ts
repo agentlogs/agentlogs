@@ -83,7 +83,9 @@ export const Route = createFileRoute("/api/auth/token")({
     handlers: {
       POST: async ({ request }) => {
         if (getConfiguredProviders().length === 0) {
-          return new Response(JSON.stringify({ error: "token exchange is not enabled on this server" }), { status: 404 });
+          return new Response(JSON.stringify({ error: "token exchange is not enabled on this server" }), {
+            status: 404,
+          });
         }
 
         const { token } = (await request.json()) as { token?: string };
@@ -130,7 +132,12 @@ export const Route = createFileRoute("/api/auth/token")({
           if (existingUser) {
             await promoteToAdminIfFirst(db, existingUser.id);
             // Re-fetch to get the potentially updated role
-            existingUser = await db.select().from(user).where(eq(user.id, existingUser.id)).limit(1).then((r) => r[0]);
+            existingUser = await db
+              .select()
+              .from(user)
+              .where(eq(user.id, existingUser.id))
+              .limit(1)
+              .then((r) => r[0]);
           }
         }
 

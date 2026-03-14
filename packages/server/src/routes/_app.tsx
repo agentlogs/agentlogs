@@ -37,10 +37,10 @@ export const Route = createFileRoute("/_app")({
         return { session: null };
       }
 
-      // For device auth page, redirect to GitHub login with callback to return here
+      // Let the login dispatcher choose the configured provider.
       if (location.pathname === "/app/device") {
         const callbackURL = location.href; // Preserves ?user_code=...
-        throw redirect({ href: `/auth/github?callbackURL=${encodeURIComponent(callbackURL)}` });
+        throw redirect({ href: `/auth/login?callbackURL=${encodeURIComponent(callbackURL)}` });
       }
 
       throw redirect({ to: "/" });
@@ -71,7 +71,7 @@ function AppLayout() {
   const userInitials = session?.user.name
     ? session.user.name
         .split(" ")
-        .map((n) => n[0])
+        .map((n: string) => n[0])
         .join("")
         .toUpperCase()
         .slice(0, 2)
@@ -178,10 +178,10 @@ function AppLayout() {
         ) : (
           <div className="flex items-center gap-2 px-4">
             <Button variant="ghost" size="sm" asChild>
-              <a href="/auth/github">Sign in</a>
+              <a href="/auth/login">Sign in</a>
             </Button>
             <Button size="sm" asChild>
-              <a href="/auth/github">Join waitlist</a>
+              <a href="/auth/login">Join waitlist</a>
             </Button>
           </div>
         )}

@@ -1,5 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { createAuth } from "../lib/auth";
+import { createAuth, getPrimaryAuthProvider } from "../lib/auth";
 
 // Server-side OAuth redirect route: /auth/github
 export const Route = createFileRoute("/auth/$")({
@@ -14,6 +14,14 @@ export const Route = createFileRoute("/auth/$")({
         // Allow callbackURL from query params, default to /app
         const url = new URL(request.url);
         const callbackURL = url.searchParams.get("callbackURL") ?? "/app";
+        if (provider === "login") {
+          const primaryProvider = getPrimaryAuthProvider();
+          if (!primaryProvider) {
+            throw redirect({ to: "/" });
+          }
+
+          throw redirect({ href: `/auth/${primaryProvider}?callbackURL=${encodeURIComponent(callbackURL)}` });
+        }
 
         const auth = createAuth();
 
@@ -44,7 +52,7 @@ export const Route = createFileRoute("/auth/$")({
           returnHeaders: true,
         });
 
-        const redirectUrl = result.response?.url ?? result.data?.url;
+        const redirectUrl = result.response?.url;
         if (!redirectUrl) {
           throw redirect({ to: "/" });
         }
