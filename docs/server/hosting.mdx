@@ -5,47 +5,18 @@ description: Deploy AgentLogs with the official GHCR image or standalone binary
 
 # Hosting AgentLogs
 
-AgentLogs server is distributed in two production-ready formats:
+AgentLogs server is available in two production-ready formats:
 
 - Official Docker image: `ghcr.io/agentlogs/agentlogs`
-- Official standalone binary: `agentlogs-server` (Linux, macOS, Windows)
+- Official standalone binary: `agentlogs-server` for Linux, macOS, and Windows
 
 Both run the same server runtime and support embedded migrations.
 
-## Required Secrets And Env Vars
+<Note>You must configure at least one OAuth provider. AgentLogs currently supports GitHub and GitLab login.</Note>
 
-| Variable               | Required | Notes                                                  |
-| ---------------------- | -------- | ------------------------------------------------------ |
-| `GITHUB_CLIENT_ID`     | Yes      | GitHub OAuth app client ID                             |
-| `GITHUB_CLIENT_SECRET` | Yes      | GitHub OAuth app client secret                         |
-| `BETTER_AUTH_SECRET`   | Yes      | Generate with `openssl rand -base64 32`                |
-| `WEB_URL`              | Yes      | Public base URL of your app (for OAuth + auth origins) |
+## Deploy
 
-## Optional Env Vars
-
-| Variable             | Default                                         | Notes                                    |
-| -------------------- | ----------------------------------------------- | ---------------------------------------- |
-| `DB_LOCAL_PATH`      | `.data/db.sqlite`                               | SQLite database file                     |
-| `STORAGE_DIR`        | `.data/storage`                                 | Local blob storage directory             |
-| `OPENROUTER_API_KEY` | unset                                           | Enables AI-generated summaries           |
-| `RESEND_API_KEY`     | unset                                           | Enables email features                   |
-| `EMAIL_SENDER`       | `Philipp from AgentLogs <philipp@agentlogs.ai>` | Overrides the transactional email sender |
-| `PORT`               | `3000`                                          | HTTP port                                |
-| `HOST`               | `0.0.0.0`                                       | HTTP bind host                           |
-
-## 1. Create A GitHub OAuth App
-
-Create an OAuth app at [github.com/settings/developers](https://github.com/settings/developers):
-
-- **Homepage URL**: `${WEB_URL}`
-- **Authorization callback URL**: `${WEB_URL}/api/auth/callback/github`
-
-Example for production:
-
-- Homepage: `https://logs.example.com`
-- Callback: `https://logs.example.com/api/auth/callback/github`
-
-## 2. Deploy With GHCR
+### Docker
 
 Pull and run the official image:
 
@@ -54,16 +25,18 @@ docker run -d \
   --name agentlogs \
   -p 3000:3000 \
   -v agentlogs-data:/app/.data \
-  -e GITHUB_CLIENT_ID=... \
-  -e GITHUB_CLIENT_SECRET=... \
   -e BETTER_AUTH_SECRET=... \
   -e WEB_URL=https://logs.example.com \
+  -e GITHUB_CLIENT_ID=... \
+  -e GITHUB_CLIENT_SECRET=... \
   ghcr.io/agentlogs/agentlogs:latest
 ```
 
+Replace the GitHub variables with GitLab variables if you want GitLab-only login, or provide both sets if you want both providers enabled.
+
 <Note>Mount `/app/.data` to persist both SQLite data and uploaded transcript blobs.</Note>
 
-## 3. Deploy With A Single Binary
+### Standalone Binary
 
 Download a matching binary from the GitHub Releases page (`server-vX.Y.Z` tags), then run:
 
@@ -76,7 +49,277 @@ chmod +x ./agentlogs-server
 - `--no-migrations` skips startup migrations
 - `--only-migrations` runs migrations and exits
 
-## 4. Connect Your CLI And Plugins
+## Environment Variables
+
+Before you deploy, make sure you have:
+
+- `BETTER_AUTH_SECRET`
+- `WEB_URL` set to your public hostname in production
+- GitHub login: `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`, or GitLab login: `GITLAB_CLIENT_ID` and `GITLAB_CLIENT_SECRET`
+- `GITLAB_ISSUER` if you use self-managed GitLab
+
+### Authentication
+
+<table>
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>BETTER_AUTH_SECRET</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>unset</td>
+      <td>
+        Required. Generate with <code>openssl rand -base64 32</code>. Used to sign auth state and sessions.
+      </td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>WEB_URL</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>http://localhost:3000</code>
+      </td>
+      <td>
+        Public base URL of your app. Used for OAuth callbacks, auth origins, and browser redirects. Set this to your
+        real public hostname in production.
+      </td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>WAITLIST_ENABLED</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>true</code>
+      </td>
+      <td>
+        When enabled, new users default to the <code>waitlist</code> role. Set it to <code>false</code> to make new
+        users regular users immediately.
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+### OAuth Providers
+
+At least one provider must be configured.
+
+If both GitHub and GitLab are configured, AgentLogs currently prefers GitHub for provider-agnostic login redirects such as browser login and device authorization.
+
+#### GitHub
+
+<table>
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>GITHUB_CLIENT_ID</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>unset</td>
+      <td>Required if GitHub login is enabled. GitHub OAuth app client ID.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>GITHUB_CLIENT_SECRET</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>unset</td>
+      <td>Required if GitHub login is enabled. GitHub OAuth app client secret.</td>
+    </tr>
+  </tbody>
+</table>
+
+#### GitLab
+
+<table>
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>GITLAB_CLIENT_ID</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>unset</td>
+      <td>Required if GitLab login is enabled. GitLab OAuth/OIDC app client ID.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>GITLAB_CLIENT_SECRET</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>unset</td>
+      <td>Required if GitLab login is enabled. GitLab OAuth/OIDC app client secret.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>GITLAB_ISSUER</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>https://gitlab.com</code>
+      </td>
+      <td>Set this to your self-managed GitLab instance URL when not using gitlab.com.</td>
+    </tr>
+  </tbody>
+</table>
+
+### Storage
+
+<table>
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>DB_LOCAL_PATH</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>.data/db.sqlite</code>
+      </td>
+      <td>SQLite database path.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>STORAGE_DIR</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>.data/storage</code>
+      </td>
+      <td>Local blob storage directory for uploaded transcript assets.</td>
+    </tr>
+  </tbody>
+</table>
+
+### Email
+
+<table>
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>RESEND_API_KEY</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>unset</td>
+      <td>Enables transactional email delivery.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>EMAIL_SENDER</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>Philipp from AgentLogs &lt;philipp@agentlogs.ai&gt;</code>
+      </td>
+      <td>Overrides the default transactional sender.</td>
+    </tr>
+  </tbody>
+</table>
+
+### AI Features
+
+<table>
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>OPENROUTER_API_KEY</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>unset</td>
+      <td>Enables AI-generated summaries.</td>
+    </tr>
+  </tbody>
+</table>
+
+### Runtime
+
+<table>
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>HOST</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>0.0.0.0</code>
+      </td>
+      <td>HTTP bind host for the standalone server runtime.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>PORT</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>3000</code>
+      </td>
+      <td>HTTP port for the standalone server runtime.</td>
+    </tr>
+  </tbody>
+</table>
+
+## Configure Authentication Providers
+
+### GitHub OAuth App
+
+Create an OAuth app at [github.com/settings/developers](https://github.com/settings/developers):
+
+- **Homepage URL**: `${WEB_URL}`
+- **Authorization callback URL**: `${WEB_URL}/api/auth/callback/github`
+
+Example for production:
+
+- Homepage: `https://logs.example.com`
+- Callback: `https://logs.example.com/api/auth/callback/github`
+
+### GitLab OAuth / OIDC App
+
+Create an OAuth application in your GitLab instance:
+
+- **Redirect URI**: `${WEB_URL}/api/auth/oauth2/callback/gitlab`
+- **Scopes**: `openid`, `profile`, `email`
+
+Example for production:
+
+- Issuer: `https://gitlab.com`
+- Redirect URI: `https://logs.example.com/api/auth/oauth2/callback/gitlab`
+
+For self-managed GitLab, set `GITLAB_ISSUER` to your instance base URL, for example `https://gitlab.company.internal`.
+
+## Connect Your CLI And Plugins
 
 Authenticate your CLI against your host:
 
@@ -84,11 +327,11 @@ Authenticate your CLI against your host:
 npx agentlogs login logs.example.com
 ```
 
-Use your public hostname (without `https://`) so your local CLI/plugins upload to your own instance.
+Use your public hostname without `https://` so your local CLI and plugins upload to your own instance.
 
-## 5. Upgrade
+## Upgrade
 
-When upgrading, deploy a newer image/binary and start it again:
+When upgrading, deploy a newer image or binary and start it again:
 
 - Docker: restart the container with the new tag; embedded migrations run on startup by default
 - Binary: replace the binary and run `./agentlogs-server`
