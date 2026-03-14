@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { eq } from "drizzle-orm";
 import { createDrizzle } from "../../db";
-import { promoteToAdminIfFirst } from "../../db/queries";
 import { session, user } from "../../db/schema";
 import { env } from "../../lib/env";
 
@@ -109,9 +108,7 @@ export const Route = createFileRoute("/api/auth/token")({
           .then((r) => r[0]);
 
         if (!existingUser) {
-          // Insert with default role first, then atomically promote to admin if
-          // no admin exists yet (race-safe: concurrent first-time logins cannot
-          // both win the NOT EXISTS check)
+          // Create users with the same default role policy as OAuth signups.
           const defaultRole = env.WAITLIST_ENABLED ? "waitlist" : "user";
           const newUsers = await db
             .insert(user)
@@ -128,17 +125,6 @@ export const Route = createFileRoute("/api/auth/token")({
             })
             .returning();
           existingUser = newUsers[0];
-
-          if (existingUser) {
-            await promoteToAdminIfFirst(db, existingUser.id);
-            // Re-fetch to get the potentially updated role
-            existingUser = await db
-              .select()
-              .from(user)
-              .where(eq(user.id, existingUser.id))
-              .limit(1)
-              .then((r) => r[0]);
-          }
         }
 
         if (!existingUser) {
