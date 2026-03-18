@@ -181,65 +181,29 @@ npx agentlogs codex upload <transcript>
 npx agentlogs codex upload ~/.codex/sessions/2025/01/25/session-abc123.jsonl
 ```
 
-### mcp
+### codex hook
 
-Run as an MCP server for Codex integration.
-
-```bash
-npx agentlogs mcp
-```
-
-This command is meant to be called by Codex's MCP server system, not manually. It:
-
-- Ensures the background service is running
-- Connects to the service to keep it alive
-- Exposes no tools or prompts (lifecycle management only)
-
-### service start
-
-Start the background service.
+Hook entry point for Codex integration. Called automatically by Codex hooks.
 
 ```bash
-npx agentlogs service start
+npx agentlogs codex hook
 ```
 
-The service watches `~/.codex/sessions` for transcript changes and uploads them automatically.
+Reads hook data from stdin. This command is meant to be called from Codex's hook system, not manually.
 
-### service stop
+### codex install
 
-Stop the background service.
+Install the AgentLogs Codex hook integration into `~/.codex`.
 
 ```bash
-npx agentlogs service stop
+npx agentlogs codex install
 ```
 
-### service status
+This command:
 
-Show background service status.
-
-```bash
-npx agentlogs service status
-```
-
-**Output:**
-
-```
-Service: running (PID: 12345)
-Connections: 1
-Watching: true
-Uptime: 3600s
-Last event: turn_complete (5s ago)
-```
-
-### service logs
-
-Tail the watcher event logs.
-
-```bash
-npx agentlogs service logs
-```
-
-Shows recent file system events and turn completions. Press `Ctrl+C` to stop.
+- Enables `codex_hooks` in `~/.codex/config.toml`
+- Writes AgentLogs hook entries to `~/.codex/hooks.json`
+- This is required because Codex hooks are currently behind the experimental `codex_hooks` feature flag
 
 ---
 

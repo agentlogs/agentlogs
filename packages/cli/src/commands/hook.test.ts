@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { appendTranscriptLink, containsGitCommit, selectPreferredTranscriptBaseUrl } from "../lib/hooks-shared";
+import { processCodexHookInput, type CodexHookInput } from "./codex/hook";
 
 describe("containsGitCommit", () => {
   it("detects git commit command", () => {
@@ -145,5 +146,83 @@ describe("selectPreferredTranscriptBaseUrl", () => {
     ]);
 
     expect(selected).toBe("http://127.0.0.1:3000");
+  });
+});
+
+describe("processCodexHookInput", () => {
+  function makeUploadResult() {
+    return {
+      results: [],
+      eventCount: 42,
+      id: "transcript-id",
+      sessionId: "session-id",
+      anySuccess: false,
+      allSuccess: false,
+      skipped: false,
+    };
+  }
+
+  it("uploads Codex transcripts on Stop", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const hookInput: CodexHookInput = {
+      hook_event_name: "Stop",
+      session_id: "session-123",
+      transcript_path: "/tmp/codex-session.jsonl",
+      cwd: "/repo",
+    };
+
+    const response = await processCodexHookInput(hookInput, async (params) => {
+      calls.push(params as unknown as Record<string, unknown>);
+      return makeUploadResult();
+    });
+
+    expect(response).toEqual({});
+    expect(calls).toEqual([
+      {
+        transcriptPath: "/tmp/codex-session.jsonl",
+        sessionId: "session-123",
+        cwdOverride: "/repo",
+        source: "codex",
+      },
+    ]);
+  });
+
+  it("does not upload on SessionStart", async () => {
+    let uploadCalled = false;
+
+    const response = await processCodexHookInput(
+      {
+        hook_event_name: "SessionStart",
+        session_id: "session-123",
+        transcript_path: "/tmp/codex-session.jsonl",
+        cwd: "/repo",
+      },
+      async () => {
+        uploadCalled = true;
+        return makeUploadResult();
+      },
+    );
+
+    expect(response).toEqual({});
+    expect(uploadCalled).toBe(false);
+  });
+
+  it("does not upload Stop events without a transcript path", async () => {
+    let uploadCalled = false;
+
+    const response = await processCodexHookInput(
+      {
+        hook_event_name: "Stop",
+        session_id: "session-123",
+        transcript_path: null,
+      },
+      async () => {
+        uploadCalled = true;
+        return makeUploadResult();
+      },
+    );
+
+    expect(response).toEqual({});
+    expect(uploadCalled).toBe(false);
   });
 });

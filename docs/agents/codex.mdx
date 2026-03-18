@@ -8,12 +8,13 @@ icon: /icons/codex.svg
 
 # Codex Integration
 
-Codex is OpenAI's CLI for coding with GPT models. AgentLogs provides automatic transcript capture through an MCP server integration.
+Codex is OpenAI's CLI for coding with GPT models. AgentLogs provides automatic transcript capture through Codex hooks.
 
 ## Features
 
 - **Automatic capture** - Transcripts are uploaded after each agent response
-- **Background service** - Watches sessions and handles uploads automatically
+- **Native hooks** - Uses Codex's built-in hook system instead of a background watcher
+- **Experimental hook support** - Automatically enables Codex's `codex_hooks` feature flag during install
 
 ## Installation
 
@@ -25,30 +26,72 @@ Run the following command in the terminal:
 npx agentlogs login agentlogs.ai
 ```
 
-### 2. Configure MCP Server
+### 2. Install AgentLogs Hooks
 
-Run the following command to add the AgentLogs MCP server:
+Run:
 
 ```bash
-codex mcp add agentlogs -- npx -y agentlogs mcp
+npx agentlogs codex install
 ```
+
+This does two things:
+
+- Adds `codex_hooks = true` under `[features]` in `~/.codex/config.toml`
+- Writes AgentLogs `SessionStart` and `Stop` entries to `~/.codex/hooks.json`
+
+`codex_hooks` is currently an experimental Codex feature flag. Without it, Codex will ignore `hooks.json`.
+
+### 3. Manual Configuration
 
 <Accordion title="Manual configuration">
-Alternatively, add the following to your Codex config file (`~/.codex/config.toml`):
+If you prefer to configure Codex yourself, first enable the experimental feature in `~/.codex/config.toml`:
 
 ```toml
-[mcp_servers.agentlogs]
-command = "npx"
-args = ["-y", "agentlogs", "mcp"]
+[features]
+codex_hooks = true
 ```
+
+Then create `~/.codex/hooks.json` with the following contents:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx -y agentlogs codex hook",
+            "timeoutSec": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx -y agentlogs codex hook",
+            "timeoutSec": 30
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+You can also place the same `hooks.json` file in a project-local `.codex/` directory if you want the integration enabled only for one repository.
 
 </Accordion>
 
 ## How It Works
 
-The MCP server is spawned by Codex and connects to a background service that watches `~/.codex/sessions` for changes. When an agent response completes, the transcript is uploaded.
+- **SessionStart** confirms the hook wiring and gives AgentLogs a native Codex integration point.
+- **Stop** uploads the current transcript after each completed agent response.
 
-The MCP server doesn't expose any tools or prompts—it exists purely for lifecycle management. The background service shuts down automatically after all Codex sessions close.
+Uploads are deduplicated server-side by session ID, so repeated Stop events update the same transcript instead of creating duplicates.
 
 ## Manual Upload
 

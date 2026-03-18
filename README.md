@@ -75,9 +75,8 @@ npx agentlogs cline install
 
 **Codex:**
 
-```bash
-codex mcp add agentlogs -- npx -y agentlogs mcp
-```
+Run `npx agentlogs codex install` to enable the experimental `codex_hooks` feature and write `~/.codex/hooks.json`.
+See the full setup guide: https://agentlogs.ai/docs/agents/codex
 
 **OpenCode** — add to `opencode.json`:
 

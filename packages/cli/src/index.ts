@@ -17,6 +17,8 @@ import { clineHookCommand } from "./commands/cline/hook";
 import { clineInstallCommand } from "./commands/cline/install";
 import { clineUploadCommand } from "./commands/cline/upload";
 // Codex commands
+import { hookCommand as codexHookCommand } from "./commands/codex/hook";
+import { codexInstallCommand } from "./commands/codex/install";
 import { codexUploadCommand } from "./commands/codex/upload";
 // OpenCode commands
 import { opencodeUploadCommand } from "./commands/opencode/upload";
@@ -24,9 +26,6 @@ import { hookCommand as openCodeHookCommand } from "./commands/opencode/hook";
 // Pi commands
 import { piUploadCommand } from "./commands/pi/upload";
 import { piHookCommand } from "./commands/pi/hook";
-// Service and MCP commands
-import { startService, stopService, serviceStatus, serviceLogs } from "./commands/service";
-import { mcpCommand } from "./commands/mcp";
 
 const program = new Command();
 
@@ -94,6 +93,20 @@ codex
   .description("Upload a Codex transcript JSONL file to AgentLogs")
   .action(async (transcript: string) => {
     await codexUploadCommand(transcript);
+  });
+
+codex
+  .command("hook")
+  .description("Process Codex hook input from stdin")
+  .action(async () => {
+    await codexHookCommand();
+  });
+
+codex
+  .command("install")
+  .description("Install AgentLogs Codex hooks into ~/.codex and enable the codex_hooks feature")
+  .action(async () => {
+    await codexInstallCommand();
   });
 
 const opencode = program.command("opencode").description("OpenCode transcript utilities for AgentLogs");
@@ -188,45 +201,6 @@ program
   .description("Deny capture for the current repository")
   .action(async () => {
     await denyCommand();
-  });
-
-// Service commands
-const service = program.command("service").description("Manage the agentlogs background service");
-
-service
-  .command("start")
-  .description("Start the background service")
-  .action(async () => {
-    await startService();
-  });
-
-service
-  .command("stop")
-  .description("Stop the background service")
-  .action(async () => {
-    await stopService();
-  });
-
-service
-  .command("status")
-  .description("Show service status")
-  .action(async () => {
-    await serviceStatus();
-  });
-
-service
-  .command("logs")
-  .description("Tail the watcher event logs")
-  .action(async () => {
-    await serviceLogs();
-  });
-
-// MCP server command (spawned by Codex)
-program
-  .command("mcp")
-  .description("Start MCP server (used by Codex)")
-  .action(async () => {
-    await mcpCommand();
   });
 
 program.showHelpAfterError("(add --help for additional information)");
