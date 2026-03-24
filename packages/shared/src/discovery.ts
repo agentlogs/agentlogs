@@ -482,6 +482,7 @@ interface ClaudeCodeTranscriptInfo {
 }
 
 const HEAD_READ_SIZE = 50 * 1024; // 50KB for cwd and preview
+const MAX_HEAD_SCAN_SIZE = 512 * 1024; // Expand for transcripts with large instruction payloads
 const TAIL_READ_SIZE = 20 * 1024; // 20KB for latest timestamp
 
 /**
@@ -722,52 +723,84 @@ async function parseCodexTranscript(filePath: string): Promise<CodexTranscriptIn
     let cwd: string | null = null;
     let preview: string | null = null;
 
-    // Read head of file for session_meta and preview
-    const headBuffer = Buffer.alloc(Math.min(HEAD_READ_SIZE, fileSize));
-    await fileHandle.read(headBuffer, 0, headBuffer.length, 0);
-    const headContent = headBuffer.toString("utf8");
+    // Read head of file for session_meta and preview. Some transcripts have very
+    // large instruction payloads before the first real user message, so expand
+    // the scan window progressively until we find a preview or hit the cap.
+    const maxHeadScanSize = Math.min(fileSize, MAX_HEAD_SCAN_SIZE);
+    let headScanSize = Math.min(HEAD_READ_SIZE, maxHeadScanSize);
 
-    for (const line of headContent.split(/\r?\n/)) {
-      if (!line.trim()) continue;
-      if (!line.endsWith("}")) break; // Stop at incomplete line
+    while (headScanSize > 0) {
+      const headBuffer = Buffer.alloc(headScanSize);
+      await fileHandle.read(headBuffer, 0, headBuffer.length, 0);
+      const headContent = headBuffer.toString("utf8");
 
-      try {
-        const record = JSON.parse(line) as Record<string, unknown>;
-        const recordTimestamp = record.timestamp as string | undefined;
-        const type = record.type as string | undefined;
-        const payload = record.payload as Record<string, unknown> | undefined;
+      let hitIncompleteLine = false;
 
-        // Track timestamps
-        if (recordTimestamp) {
-          const ts = new Date(recordTimestamp);
-          if (!Number.isNaN(ts.getTime())) {
-            if (!latestTimestamp || ts > latestTimestamp) {
-              latestTimestamp = ts;
+      for (const line of headContent.split(/\r?\n/)) {
+        if (!line.trim()) continue;
+        if (!line.endsWith("}")) {
+          hitIncompleteLine = true;
+          break;
+        }
+
+        try {
+          const record = JSON.parse(line) as Record<string, unknown>;
+          const recordTimestamp = record.timestamp as string | undefined;
+          const type = record.type as string | undefined;
+          const payload = record.payload as Record<string, unknown> | undefined;
+
+          // Track timestamps
+          if (recordTimestamp) {
+            const ts = new Date(recordTimestamp);
+            if (!Number.isNaN(ts.getTime())) {
+              if (!latestTimestamp || ts > latestTimestamp) {
+                latestTimestamp = ts;
+              }
             }
           }
-        }
 
-        if (!payload) continue;
+          if (!payload) continue;
 
-        // Parse session_meta
-        if (type === "session_meta") {
-          sessionId = (payload.id as string) ?? null;
-          cwd = (payload.cwd as string) ?? null;
-        }
-
-        // Parse user message for preview
-        if (type === "event_msg" && payload.type === "user_message" && !preview) {
-          const message = payload.message as string | undefined;
-          if (message) {
-            preview = truncatePreview(message);
+          // Parse session_meta
+          if (type === "session_meta") {
+            sessionId = (payload.id as string) ?? null;
+            cwd = (payload.cwd as string) ?? null;
           }
-        }
 
-        // Stop early if we have what we need
-        if (sessionId && cwd && preview) break;
-      } catch {
-        continue;
+          // Parse user message for preview
+          if (type === "event_msg" && payload.type === "user_message" && !preview) {
+            const message = payload.message as string | undefined;
+            if (message) {
+              preview = truncatePreview(message);
+            }
+          }
+
+          if (
+            type === "response_item" &&
+            payload.type === "message" &&
+            payload.role === "user" &&
+            !preview &&
+            Array.isArray(payload.content)
+          ) {
+            const message = extractTextFromContent(payload.content);
+            if (message) {
+              preview = truncatePreview(message);
+            }
+          }
+
+          // Stop early if we have what we need
+          if (sessionId && cwd && preview) break;
+        } catch {
+          continue;
+        }
       }
+
+      if (sessionId && cwd && preview) break;
+      if (headScanSize >= maxHeadScanSize || (!hitIncompleteLine && preview)) {
+        break;
+      }
+
+      headScanSize = Math.min(maxHeadScanSize, headScanSize * 4);
     }
 
     // Read tail for latest timestamp
