@@ -10,7 +10,7 @@ import { convertPiTranscript, type PiSessionEntry, type PiSessionHeader } from "
 import { LiteLLMPricingFetcher } from "@agentlogs/shared/pricing";
 import { resolveGitContext } from "@agentlogs/shared/claudecode";
 import { uploadUnifiedToAllEnvs } from "../../lib/perform-upload";
-import { getRepoIdFromCwd, isRepoAllowed } from "../../settings";
+import { getRepoIdFromCwd, isRepoAllowed, shouldAddTranscriptLinkToCommit } from "../../settings";
 import {
   hookLogger as logger,
   containsGitCommit,
@@ -170,7 +170,7 @@ async function handleToolCall(hookInput: PiHookInput): Promise<void> {
   const repoId = await getRepoIdFromCwd(cwd);
   const repoAllowed = isRepoAllowed(repoId);
 
-  if (isBashTool && containsGitCommit(command) && repoAllowed) {
+  if (isBashTool && containsGitCommit(command) && repoAllowed && shouldAddTranscriptLinkToCommit(repoId)) {
     // Generate stable transcript ID
     const transcriptId = await getOrCreateTranscriptId(sessionId);
 

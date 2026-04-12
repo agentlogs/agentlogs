@@ -6,7 +6,7 @@
  */
 
 import { performUploadToAllEnvs } from "../../lib/perform-upload";
-import { getRepoIdFromCwd, isRepoAllowed } from "../../settings";
+import { getRepoIdFromCwd, isRepoAllowed, shouldAddTranscriptLinkToCommit } from "../../settings";
 import {
   hookLogger as logger,
   containsGitCommit,
@@ -185,7 +185,7 @@ async function handlePreToolUse(hookInput: ClaudeHookInput): Promise<void> {
   const repoId = await getRepoIdFromCwd(cwd);
   const repoAllowed = isRepoAllowed(repoId);
 
-  if (isBashTool && command && containsGitCommit(command) && repoAllowed) {
+  if (isBashTool && command && containsGitCommit(command) && repoAllowed && shouldAddTranscriptLinkToCommit(repoId)) {
     shouldTrack = true;
     const clientId = await getOrCreateTranscriptId(sessionId);
     const transcriptBaseUrl = await getPreferredTranscriptBaseUrl();

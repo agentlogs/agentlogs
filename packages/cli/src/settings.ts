@@ -12,11 +12,15 @@ export type Visibility = "private" | "team" | "public";
 export interface RepoSettings {
   allow: boolean;
   visibility?: Visibility;
+  /** Override for adding transcript link to commit messages (per-repo) */
+  addTranscriptLinkToCommit?: boolean;
 }
 
 export interface Settings {
   allowMode: AllowMode;
   repos: Record<string, RepoSettings>;
+  /** Global default for adding transcript link to commit messages */
+  addTranscriptLinkToCommit?: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -49,6 +53,7 @@ export function readSettings(): Settings {
     return {
       allowMode: parsed.allowMode === "allowlist" ? "allowlist" : "denylist",
       repos: typeof parsed.repos === "object" && parsed.repos !== null ? parsed.repos : {},
+      addTranscriptLinkToCommit: parsed.addTranscriptLinkToCommit,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -124,6 +129,27 @@ export function getRepoVisibility(repoId: string | null): Visibility | undefined
   const settings = readSettings();
   const repoSettings = settings.repos[repoId];
   return repoSettings?.visibility;
+}
+
+/**
+ * Check if transcript link should be added to commit messages.
+ * Priority: per-repo > global > default(true)
+ */
+export function shouldAddTranscriptLinkToCommit(repoId: string | null): boolean {
+  const settings = readSettings();
+
+  if (repoId) {
+    const repoSettings = settings.repos[repoId];
+    if (repoSettings?.addTranscriptLinkToCommit !== undefined) {
+      return repoSettings.addTranscriptLinkToCommit;
+    }
+  }
+
+  if (settings.addTranscriptLinkToCommit !== undefined) {
+    return settings.addTranscriptLinkToCommit;
+  }
+
+  return true;
 }
 
 /**
