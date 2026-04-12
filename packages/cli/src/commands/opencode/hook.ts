@@ -5,7 +5,9 @@
  * Reads JSON from stdin, processes the event, and outputs JSON response (for before hooks).
  */
 
-import { spawnSync } from "child_process";
+import { readFileSync, unlinkSync, openSync, closeSync } from "fs";
+import { spawn } from "child_process";
+import * as os from "os";
 import type { OpenCodeExport } from "@agentlogs/shared";
 import { convertOpenCodeTranscript } from "@agentlogs/shared/opencode";
 import { LiteLLMPricingFetcher } from "@agentlogs/shared/pricing";
@@ -285,67 +287,123 @@ async function handleSessionIdle(hookInput: OpenCodeHookInput): Promise<void> {
 // Transcript Export
 // ============================================================================
 
-function readSessionFromExport(sessionId: string): OpenCodeExport | null {
+interface ExportResult {
+  success: boolean;
+  data?: OpenCodeExport;
+  error?: string;
+}
+
+async function readSessionFromExport(sessionId: string): Promise<ExportResult> {
+  const tmpFile = `${os.tmpdir()}/agentlogs-oc-${process.pid}-${Date.now()}.json`;
+  let exitCode = 0;
+  let stderr = "";
+
+  const fd = openSync(tmpFile, "w");
+
   try {
-    const result = spawnSync("opencode", ["export", sessionId], {
-      encoding: "utf-8",
-      timeout: 30000,
-      stdio: ["pipe", "pipe", "pipe"],
+    const proc = spawn("opencode", ["export", sessionId], {
+      stdio: ["pipe", fd, "pipe"],
     });
 
-    if (result.status !== 0 || result.error) {
-      logger.warn("OpenCode export failed", {
-        sessionId: sessionId.substring(0, 8),
-        error: result.error?.message || result.stderr,
+    if (proc.stderr) {
+      proc.stderr.on("data", (chunk) => {
+        stderr += chunk.toString();
       });
-      return null;
     }
 
-    const output = result.stdout.trim();
-    if (!output) {
-      return null;
-    }
+    exitCode = await new Promise<number>((resolve) => proc.on("close", resolve));
+  } finally {
+    closeSync(fd);
+  }
 
-    return JSON.parse(output) as OpenCodeExport;
-  } catch (error) {
-    logger.error("OpenCode export error", {
+  let content = "";
+  try {
+    content = readFileSync(tmpFile, "utf-8").trim();
+  } catch {
+    return {
+      success: false,
+      error: `Session not found`,
+    };
+  } finally {
+    try {
+      unlinkSync(tmpFile);
+    } catch {
+      // ignore cleanup
+    }
+  }
+
+  stderr = stderr.trim();
+
+  if (exitCode !== 0) {
+    logger.warn("OpenCode export failed", {
       sessionId: sessionId.substring(0, 8),
-      error: error instanceof Error ? error.message : String(error),
+      error: stderr || `exit code ${exitCode}`,
     });
-    return null;
+    return {
+      success: false,
+      error: stderr || `exit code ${exitCode}`,
+    };
+  }
+
+  if (!content) {
+    return {
+      success: false,
+      error: "empty output",
+    };
+  }
+
+  try {
+    const data = JSON.parse(content) as OpenCodeExport;
+    return { success: true, data };
+  } catch (err) {
+    const truncated = !content.endsWith("}");
+    logger.warn("OpenCode export parse failed", {
+      sessionId: sessionId.substring(0, 8),
+      truncated,
+      error: err instanceof Error ? err.message : "parse error",
+    });
+    return {
+      success: false,
+      error: truncated ? "truncated" : "parse error",
+    };
   }
 }
 
 async function uploadPartialTranscript(sessionId: string, cwd?: string): Promise<void> {
-  const exportData = readSessionFromExport(sessionId);
-  if (!exportData) {
+  const result = await readSessionFromExport(sessionId);
+  if (!result.success) {
     logger.warn("OpenCode partial upload: session not found", {
       sessionId: sessionId.substring(0, 8),
+      error: result.error,
     });
     return;
   }
 
+  const exportData = result.data as OpenCodeExport;
   await doUpload(exportData, sessionId, cwd, "partial");
 }
 
 async function uploadFullTranscript(sessionId: string, cwd?: string): Promise<void> {
-  const exportData = readSessionFromExport(sessionId);
-  if (!exportData) {
+  const result = await readSessionFromExport(sessionId);
+  if (!result.success) {
     logger.warn("OpenCode full upload: session not found", {
       sessionId: sessionId.substring(0, 8),
+      error: result.error,
     });
     return;
   }
 
+  const exportData2 = result.data as OpenCodeExport;
+
   // Skip subagent sessions
-  if (exportData.info.parentID) {
+  if (exportData2.info.parentID) {
     logger.debug("OpenCode full upload: skipping subagent session", {
       sessionId: sessionId.substring(0, 8),
     });
     return;
   }
 
-  await doUpload(exportData, sessionId, cwd, "full");
+  await doUpload(exportData2, sessionId, cwd, "full");
 }
 
 async function doUpload(
