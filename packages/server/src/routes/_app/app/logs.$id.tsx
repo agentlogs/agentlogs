@@ -62,12 +62,14 @@ import {
   PiIcon,
 } from "../../../components/icons/source-icons";
 import { MarkdownRenderer } from "../../../components/markdown-renderer";
+import { groupMessagesIntoSegments, isInternalMessage } from "../../../lib/message-segments";
 
 import {
   extractImageReferences,
   type ImageReference,
   replaceImageReferencesForDisplay,
 } from "../../../lib/message-utils";
+import { isSteeringMessage } from "../../../lib/message-segments";
 import { deleteTranscript, getTranscript, updateTitle, updateVisibility } from "../../../lib/server-functions";
 
 export const Route = createFileRoute("/_app/app/logs/$id")({
@@ -184,98 +186,12 @@ function formatRepoName(repo: string): { label: string; isGitHub: boolean } {
   return { label: repo, isGitHub: false };
 }
 
-// Check if text is an internal system message (for filtering)
-// Note: Most internal messages are now filtered at ingest time in claudecode.ts
-// This is kept as a fallback for any edge cases
-function isInternalMessage(text: string): boolean {
-  const internalPatterns = [/^<local-command-caveat>.*<\/local-command-caveat>/s];
-  const trimmed = text.trim();
-  return internalPatterns.some((pattern) => pattern.test(trimmed));
-}
-
-// Check if a message is "important" and should be shown expanded
-// Important messages: user messages, last agent response before user message
-function isImportantMessage(
-  message: UnifiedTranscriptMessage,
-  index: number,
-  messages: UnifiedTranscriptMessage[],
-): boolean {
-  // User messages are always important
-  if (message.type === "user") return true;
-
-  // Commands are important (like user prompts)
-  if (message.type === "command") return true;
-
-  // Check if this is the last agent response before a user message
-  if (message.type === "agent") {
-    // Look ahead to find if the next non-thinking, non-tool-call message is a user message
-    for (let i = index + 1; i < messages.length; i++) {
-      const nextMsg = messages[i];
-      if (nextMsg.type === "user" || nextMsg.type === "command") {
-        return true; // This agent message is right before a user prompt
-      }
-      if (nextMsg.type === "agent") {
-        return false; // Another agent message comes first
-      }
-      // Continue past tool-calls and thinking blocks
-    }
-    // If this is the last agent message in the conversation, it's important
-    return true;
-  }
-
-  return false;
-}
-
-// Segment type for grouping messages
-type MessageSegment =
-  | { type: "important"; message: UnifiedTranscriptMessage; index: number }
-  | {
-      type: "collapsed";
-      messages: Array<{ message: UnifiedTranscriptMessage; index: number }>;
-    };
-
-// Group messages into segments of important messages and collapsed steps
-function groupMessagesIntoSegments(messages: UnifiedTranscriptMessage[]): MessageSegment[] {
-  const segments: MessageSegment[] = [];
-  let currentCollapsedGroup: Array<{
-    message: UnifiedTranscriptMessage;
-    index: number;
-  }> = [];
-
-  for (let i = 0; i < messages.length; i++) {
-    const message = messages[i];
-
-    // Skip internal messages
-    if (message.type === "user" && isInternalMessage(message.text)) {
-      continue;
-    }
-
-    if (isImportantMessage(message, i, messages)) {
-      // Flush any pending collapsed group
-      if (currentCollapsedGroup.length > 0) {
-        segments.push({ type: "collapsed", messages: currentCollapsedGroup });
-        currentCollapsedGroup = [];
-      }
-      segments.push({ type: "important", message, index: i });
-    } else {
-      currentCollapsedGroup.push({ message, index: i });
-    }
-  }
-
-  // Flush any remaining collapsed group
-  if (currentCollapsedGroup.length > 0) {
-    segments.push({ type: "collapsed", messages: currentCollapsedGroup });
-  }
-
-  return segments;
-}
-
 // Get user messages with their indices for navigation
 function getUserMessagesWithIndices(messages: UnifiedTranscriptMessage[]): Array<{ index: number; text: string }> {
   const result: Array<{ index: number; text: string }> = [];
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
-    if (msg.type === "user" && !isInternalMessage(msg.text)) {
+    if (msg.type === "user" && !isInternalMessage(msg.text) && !isSteeringMessage(msg)) {
       result.push({ index: i, text: msg.text });
     } else if (msg.type === "command") {
       result.push({ index: i, text: msg.name });
@@ -486,7 +402,13 @@ function TranscriptDetailComponent() {
                 onPermalink={setPermalinkedIndex}
               />
             ) : (
-              <CollapsedSteps key={`collapsed-${i}`} messages={segment.messages} showDebugInfo={showDebugInfo} />
+              <CollapsedSteps
+                key={`collapsed-${i}`}
+                items={segment.items}
+                stepCount={segment.stepCount}
+                steeringCount={segment.steeringCount}
+                showDebugInfo={showDebugInfo}
+              />
             ),
           )}
         </div>
@@ -1149,6 +1071,7 @@ function MessageBlock({ message, index, showDebugInfo, isPermalinked, onPermalin
     }
 
     const userImages = message.images ?? [];
+    const isSteeringMessage = message.variant === "steering";
 
     const handlePermalink = (e: React.MouseEvent) => {
       e.preventDefault();
@@ -1159,7 +1082,9 @@ function MessageBlock({ message, index, showDebugInfo, isPermalinked, onPermalin
     return (
       <div id={messageId} className="group/permalink scroll-mt-4">
         <div
-          className={`relative rounded-lg bg-secondary/80 px-5 py-5 ${isPermalinked ? "ring-1 ring-foreground/20" : ""}`}
+          className={`relative rounded-lg ${
+            isSteeringMessage ? "bg-muted/25 px-4 py-3" : "bg-secondary/80 px-5 py-5"
+          } ${isPermalinked ? "ring-1 ring-foreground/20" : ""}`}
         >
           <Button
             variant="ghost"
@@ -1171,7 +1096,10 @@ function MessageBlock({ message, index, showDebugInfo, isPermalinked, onPermalin
               <Link2 className="h-3.5 w-3.5" />
             </a>
           </Button>
-          <TruncatedUserMessage text={message.text} />
+          <TruncatedUserMessage
+            text={message.text}
+            className={isSteeringMessage ? "text-muted-foreground" : undefined}
+          />
           <ImageGallery images={userImages} />
         </div>
       </div>
@@ -1247,45 +1175,66 @@ function MessageBlock({ message, index, showDebugInfo, isPermalinked, onPermalin
 
 // Collapsed steps component - groups unimportant messages into a collapsible section
 function CollapsedSteps({
-  messages,
+  items,
+  stepCount,
+  steeringCount,
   showDebugInfo,
 }: {
-  messages: Array<{ message: UnifiedTranscriptMessage; index: number }>;
+  items: Array<
+    | { type: "steps"; messages: Array<{ message: UnifiedTranscriptMessage; index: number }> }
+    | { type: "steering"; message: UnifiedTranscriptMessage; index: number }
+  >;
+  stepCount: number;
+  steeringCount: number;
   showDebugInfo?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
-  if (messages.length === 0) return null;
+  if (items.length === 0) return null;
 
   // Calculate total diff stats from Write/Edit tools in this collapsed section
   let totalAdded = 0;
   let totalRemoved = 0;
   let totalModified = 0;
 
-  for (const { message } of messages) {
-    if (message.type === "tool-call") {
-      const inputObj = message.input as Record<string, unknown> | undefined;
+  for (const item of items) {
+    if (item.type !== "steps") {
+      continue;
+    }
 
-      if (message.toolName === "Edit" && inputObj?.diff) {
-        const stats = parseDiffStats(String(inputObj.diff));
-        totalAdded += stats.added - stats.modified;
-        totalRemoved += stats.removed - stats.modified;
-        totalModified += stats.modified;
-      } else if (message.toolName === "Write" && inputObj?.content) {
-        const lineCount = String(inputObj.content).split("\n").length;
-        totalAdded += lineCount;
+    for (const { message } of item.messages) {
+      if (message.type === "tool-call") {
+        const inputObj = message.input as Record<string, unknown> | undefined;
+
+        if (message.toolName === "Edit" && inputObj?.diff) {
+          const stats = parseDiffStats(String(inputObj.diff));
+          totalAdded += stats.added - stats.modified;
+          totalRemoved += stats.removed - stats.modified;
+          totalModified += stats.modified;
+        } else if (message.toolName === "Write" && inputObj?.content) {
+          const lineCount = String(inputObj.content).split("\n").length;
+          totalAdded += lineCount;
+        }
       }
     }
   }
 
   const hasChanges = totalAdded > 0 || totalRemoved > 0 || totalModified > 0;
+  const hiddenSummaryParts: string[] = [];
+  if (stepCount > 0) {
+    hiddenSummaryParts.push(`${stepCount} step${stepCount === 1 ? "" : "s"}`);
+  }
+  if (steeringCount > 0) {
+    hiddenSummaryParts.push(`${steeringCount} steering message${steeringCount === 1 ? "" : "s"}`);
+  }
+  const hiddenSummary = hiddenSummaryParts.join(", ") || "steps";
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen} className="group/steps">
       <div className="flex items-center gap-2">
         <CollapsibleTrigger className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-muted-foreground/30 hover:text-foreground">
           <ChevronDown className="h-4 w-4 transition-transform group-data-[open]/steps:rotate-180" />
-          <span>{isOpen ? `Hide ${messages.length} steps` : `${messages.length} steps hidden`}</span>
+          <span>{isOpen ? `Hide ${hiddenSummary}` : `${hiddenSummary} hidden`}</span>
         </CollapsibleTrigger>
         {hasChanges && (
           <span className="flex items-center gap-1 text-sm">
@@ -1297,6 +1246,55 @@ function CollapsedSteps({
       </div>
       <CollapsibleContent>
         <div className="mt-3 ml-2 space-y-3 border-l border-border pl-4">
+          {items.map((item, itemIndex) => {
+            if (item.type === "steps") {
+              return (
+                <NestedCollapsedSteps
+                  key={`steps-${itemIndex}`}
+                  messages={item.messages}
+                  showDebugInfo={showDebugInfo}
+                />
+              );
+            }
+
+            return (
+              <MessageBlock
+                key={`steering-${item.index}`}
+                message={item.message}
+                index={item.index}
+                showDebugInfo={showDebugInfo}
+              />
+            );
+          })}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function NestedCollapsedSteps({
+  messages,
+  showDebugInfo,
+}: {
+  messages: Array<{ message: UnifiedTranscriptMessage; index: number }>;
+  showDebugInfo?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  if (messages.length === 0) return null;
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="group/nested-steps">
+      <CollapsibleTrigger className="inline-flex items-center gap-2 rounded-md border border-border/70 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-muted-foreground/30 hover:text-foreground">
+        <ChevronDown className="h-4 w-4 transition-transform group-data-[open]/nested-steps:rotate-180" />
+        <span>
+          {isOpen
+            ? `Hide ${messages.length} step${messages.length === 1 ? "" : "s"}`
+            : `${messages.length} step${messages.length === 1 ? "" : "s"} hidden`}
+        </span>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mt-3 ml-2 space-y-3 border-l border-border/70 pl-4">
           {messages.map(({ message, index }) => (
             <MessageBlock key={index} message={message} index={index} showDebugInfo={showDebugInfo} />
           ))}
@@ -1306,19 +1304,21 @@ function CollapsedSteps({
   );
 }
 
-function TruncatedUserMessage({ text }: { text: string }) {
+function TruncatedUserMessage({ text, className }: { text: string; className?: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
   // Rough heuristic: long content threshold
   const lineCount = text.split("\n").length;
   const isLong = text.length > 1600 || lineCount > 20;
 
   if (!isLong) {
-    return <p className="text-sm wrap-break-word whitespace-pre-wrap">{text}</p>;
+    return <p className={`text-sm wrap-break-word whitespace-pre-wrap ${className ?? ""}`}>{text}</p>;
   }
 
   return (
     <div>
-      <p className={`text-sm wrap-break-word whitespace-pre-wrap ${!isExpanded ? "line-clamp-[20]" : ""}`}>
+      <p
+        className={`text-sm wrap-break-word whitespace-pre-wrap ${className ?? ""} ${!isExpanded ? "line-clamp-[20]" : ""}`}
+      >
         {isExpanded ? text : text.trimEnd()}
       </p>
       <button
