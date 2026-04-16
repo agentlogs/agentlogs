@@ -39,6 +39,7 @@
     "check": "tsgo --project tsconfig.json"
   },
   "dependencies": {
+    "cross-spawn": "^7.0.6",
     "jsonc-parser": "^3.3.1",
     "libsql": "^0.5.22"
   },
@@ -46,6 +47,7 @@
     "@agentlogs/shared": "workspace:*",
     "@mariozechner/pi-tui": "^0.57.1",
     "@paralleldrive/cuid2": "^3.3.0",
+    "@types/cross-spawn": "^6.0.6",
     "aywson": "^0.0.16",
     "better-auth": "^1.5.4",
     "chalk": "^5.6.2",

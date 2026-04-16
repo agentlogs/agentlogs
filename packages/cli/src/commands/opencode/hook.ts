@@ -6,8 +6,8 @@
  */
 
 import { readFileSync, unlinkSync, openSync, closeSync } from "fs";
-import { spawn } from "child_process";
 import * as os from "os";
+import spawn from "cross-spawn";
 import type { OpenCodeExport } from "@agentlogs/shared";
 import { convertOpenCodeTranscript } from "@agentlogs/shared/opencode";
 import { LiteLLMPricingFetcher } from "@agentlogs/shared/pricing";

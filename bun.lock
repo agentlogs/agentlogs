@@ -21,6 +21,7 @@
         "agentlogs": "dist/index.js",
       },
       "dependencies": {
+        "cross-spawn": "^7.0.6",
         "jsonc-parser": "^3.3.1",
         "libsql": "^0.5.22",
       },
@@ -28,6 +29,7 @@
         "@agentlogs/shared": "workspace:*",
         "@mariozechner/pi-tui": "^0.57.1",
         "@paralleldrive/cuid2": "^3.3.0",
+        "@types/cross-spawn": "^6.0.6",
         "aywson": "^0.0.16",
         "better-auth": "^1.5.4",
         "chalk": "^5.6.2",
@@ -812,6 +814,8 @@
     "@types/better-sqlite3": ["@types/better-sqlite3@7.6.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-NMv9ASNARoKksWtsq/SHakpYAYnhBrQgGD8zkLYk/jaK8jUGn08CfEdTRgYhMypUQAfzSP8W6gNLe0q19/t4VA=="],
 
     "@types/bun": ["@types/bun@1.3.10", "", { "dependencies": { "bun-types": "1.3.10" } }, "sha512-0+rlrUrOrTSskibryHbvQkDOWRJwJZqZlxrUs1u4oOoTln8+WIXBPmAuCF35SWB2z4Zl3E84Nl/D0P7803nigQ=="],
+
+    "@types/cross-spawn": ["@types/cross-spawn@6.0.6", "", { "dependencies": { "@types/node": "*" } }, "sha512-fXRhhUkG4H3TQk5dBhQ7m/JDdSNHKwR2BBia62lhwEIq9xGiQKLxd6LymNhn47SjXhsUEPmxi+PKw2OkW4LLjA=="],
 
     "@types/d3-array": ["@types/d3-array@3.2.2", "", {}, "sha512-hOLWVbm7uRza0BYXpIIW5pxfrKe0W+D5lrFiAEYR+pb6w3N2SwSMaJbXdUfSEv+dT4MfHBLtn5js0LAWaO6otw=="],
 

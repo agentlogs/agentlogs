@@ -1,5 +1,5 @@
 import { resolve } from "path";
-import { spawnSync } from "child_process";
+import { sync as spawnSync } from "cross-spawn";
 import { existsSync, readFileSync } from "fs";
 import { discoverAllTranscripts, type DiscoveredTranscript, type TranscriptSource } from "@agentlogs/shared";
 import { convertOpenCodeTranscript, type OpenCodeExport } from "@agentlogs/shared/opencode";
