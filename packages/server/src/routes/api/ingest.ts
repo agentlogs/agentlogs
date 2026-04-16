@@ -311,7 +311,8 @@ export const Route = createFileRoute("/api/ingest")({
         const r2KeyPrefix = repoId ? `${repoId}/${transcriptId}` : `private/${userId}/${transcriptId}`;
 
         // Start summary generation in parallel (if needed)
-        const needsSummaryGeneration = !existingSummary && unifiedTranscript.preview;
+        const clientSummary = unifiedTranscript.summary ?? null;
+        const needsSummaryGeneration = !existingSummary && !clientSummary && unifiedTranscript.preview;
         const summaryPromise = needsSummaryGeneration
           ? generateSummary(unifiedTranscript.preview!)
               .then((result) => {
@@ -325,7 +326,7 @@ export const Route = createFileRoute("/api/ingest")({
                 });
                 return null;
               })
-          : Promise.resolve(existingSummary);
+          : Promise.resolve(existingSummary ?? clientSummary);
 
         // Upload unified transcript to R2
         const unifiedJson = JSON.stringify(unifiedTranscript);

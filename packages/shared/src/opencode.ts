@@ -400,7 +400,7 @@ export function convertOpenCodeTranscript(
     source: "opencode" as const,
     timestamp,
     preview,
-    summary: null,
+    summary: info.title && !info.title.startsWith("New session - ") ? info.title : null,
     model: primaryModel,
     clientVersion: options.clientVersion ?? info.version ?? null,
     blendedTokens,
