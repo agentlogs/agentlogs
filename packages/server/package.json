@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@agentlogs/shared": "workspace:*",
+    "@ai-sdk/openai": "^3.0.53",
     "@base-ui/react": "^1.2.0",
     "@fontsource/instrument-serif": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
