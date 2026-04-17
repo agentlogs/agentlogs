@@ -28,6 +28,7 @@
     "@tanstack/react-start": "^1.166.7",
     "@vercel/og": "^0.11.1",
     "ai": "^6.0.116",
+    "ansi-to-html": "^0.7.2",
     "better-auth": "1.5.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

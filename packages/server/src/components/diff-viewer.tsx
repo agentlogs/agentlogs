@@ -1,6 +1,7 @@
 import { File, PatchDiff } from "@pierre/diffs/react";
+import AnsiToHtml from "ansi-to-html";
 import { FilePlus, Pencil, SquareTerminal } from "lucide-react";
-import { Component, type ReactNode } from "react";
+import { Component, type ReactNode, useMemo } from "react";
 
 // Error boundary to catch PatchDiff rendering errors
 class DiffErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { hasError: boolean }> {
@@ -387,6 +388,29 @@ export function CodeBlock({ content, language = "bash", className }: CodeBlockPr
   );
 }
 
+// eslint-disable-next-line no-control-regex
+const ANSI_REGEX = /\x1B\[[0-9;]*m/;
+
+function containsAnsi(text: string): boolean {
+  return ANSI_REGEX.test(text);
+}
+
+const ansiConverter = new AnsiToHtml({
+  fg: "#dbd7caee",
+  bg: "transparent",
+  escapeXML: true,
+});
+
+function AnsiBlock({ content, className }: { content: string; className?: string }) {
+  const html = useMemo(() => ansiConverter.toHtml(content), [content]);
+  return (
+    <pre
+      className={`overflow-x-auto text-[13px] leading-5 whitespace-pre-wrap text-[#dbd7caee] ${className || ""}`}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
+
 /**
  * Shell output renderer that detects and highlights diff sections
  */
@@ -466,6 +490,13 @@ function splitShellOutput(content: string): OutputSegment[] {
 }
 
 export function ShellOutput({ content, className }: ShellOutputProps) {
+  const hasAnsi = containsAnsi(content);
+
+  // If content has ANSI escape codes, render with ANSI-to-HTML conversion
+  if (hasAnsi) {
+    return <AnsiBlock content={content} className={className} />;
+  }
+
   const segments = splitShellOutput(content);
 
   // If no diff segments, just render as plain text
