@@ -12,10 +12,24 @@ function TooltipProvider({ delay = 0, delayDuration, ...props }: TooltipProvider
   return <TooltipPrimitive.Provider data-slot="tooltip-provider" delay={delayDuration ?? delay} {...props} />;
 }
 
-function Tooltip({ ...props }: TooltipPrimitive.Root.Props) {
+function Tooltip({ children, ...props }: TooltipPrimitive.Root.Props) {
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => setMounted(true), []);
+
+  if (!mounted) {
+    // During SSR, render only the trigger child to avoid @base-ui/react errors
+    const trigger = React.Children.toArray(children as React.ReactNode).find(
+      (child) =>
+        React.isValidElement(child) && (child as React.ReactElement<{ asChild?: boolean }>).type === TooltipTrigger,
+    );
+    return trigger ? <>{(trigger as React.ReactElement<{ children?: React.ReactNode }>).props.children}</> : null;
+  }
+
   return (
     <TooltipProvider>
-      <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+      <TooltipPrimitive.Root data-slot="tooltip" {...props}>
+        {children}
+      </TooltipPrimitive.Root>
     </TooltipProvider>
   );
 }

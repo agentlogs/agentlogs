@@ -4,8 +4,23 @@ import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { cn } from "@/lib/utils";
 import { ChevronRightIcon, CheckIcon } from "lucide-react";
 
-function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
-  return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
+function DropdownMenu({ children, ...props }: MenuPrimitive.Root.Props) {
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => setMounted(true), []);
+
+  if (!mounted) {
+    // During SSR, render only the trigger child to avoid @base-ui/react errors
+    const trigger = React.Children.toArray(children as React.ReactNode).find(
+      (child) => React.isValidElement(child) && (child as React.ReactElement).type === DropdownMenuTrigger,
+    );
+    return trigger ? <>{(trigger as React.ReactElement<{ children?: React.ReactNode }>).props.children}</> : null;
+  }
+
+  return (
+    <MenuPrimitive.Root data-slot="dropdown-menu" {...props}>
+      {children}
+    </MenuPrimitive.Root>
+  );
 }
 
 function DropdownMenuPortal({ ...props }: MenuPrimitive.Portal.Props) {
