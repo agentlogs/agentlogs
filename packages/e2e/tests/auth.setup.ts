@@ -5,7 +5,7 @@
  * across tests. The session and auth env are pre-seeded by start-test-server.ts
  * before vite starts.
  */
-import { test as setup } from "@playwright/test";
+import { expect, test as setup } from "@playwright/test";
 import path from "path";
 import fs from "fs";
 import { signCookie, TEST_AUTH_SECRET } from "../utils/sign-cookie";
@@ -41,14 +41,9 @@ setup("authenticate", async ({ page }) => {
   // Verify auth works by navigating to /app
   await page.goto("/app");
 
-  // Wait for authenticated content - the user avatar dropdown trigger indicates we're logged in
-  // It contains the user's initials and a chevron icon
-  const userMenuTrigger = page.locator('[data-slot="dropdown-menu-trigger"]');
-  const authSuccess = await userMenuTrigger.isVisible({ timeout: 5000 }).catch(() => false);
-
-  if (!authSuccess) {
-    throw new Error("Authentication setup failed - session cookie not accepted");
-  }
+  // The authenticated nav renders on the server, so it is a stable signal that the
+  // seeded session cookie was accepted even if menu/tooltip triggers hydrate later.
+  await expect(page.getByRole("link", { name: "Logs" })).toBeVisible();
 
   // Save the storage state
   await page.context().storageState({ path: AUTH_FILE });
