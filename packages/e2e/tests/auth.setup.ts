@@ -41,9 +41,12 @@ setup("authenticate", async ({ page }) => {
   // Verify auth works by navigating to /app
   await page.goto("/app");
 
-  // The authenticated nav renders on the server, so it is a stable signal that the
-  // seeded session cookie was accepted even if menu/tooltip triggers hydrate later.
-  await expect(page.getByRole("link", { name: "Logs" })).toBeVisible();
+  // Assert we stayed on the authenticated app shell and found the exact nav link,
+  // not the unauthenticated landing-page brand link containing "AgentLogs".
+  const logsNavLink = page.getByRole("link", { name: "Logs", exact: true });
+  await expect(page).toHaveURL(/\/app$/);
+  await expect(logsNavLink).toBeVisible();
+  await expect(logsNavLink).toHaveAttribute("href", "/app");
 
   // Save the storage state
   await page.context().storageState({ path: AUTH_FILE });
