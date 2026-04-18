@@ -57,6 +57,7 @@ Before you deploy, make sure you have:
 - `WEB_URL` set to your public hostname in production
 - GitHub login: `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`, or GitLab login: `GITLAB_CLIENT_ID` and `GITLAB_CLIENT_SECRET`
 - `GITLAB_ISSUER` if you use self-managed GitLab
+- An AI summary backend if you want transcript titles generated automatically
 
 ### Authentication
 
@@ -240,6 +241,13 @@ If both GitHub and GitLab are configured, AgentLogs currently prefers GitHub for
 
 ### AI Features
 
+AgentLogs can generate short transcript titles during ingest. You can configure one of two backends:
+
+- `AI_BASE_URL` and `AI_MODEL` for any OpenAI-compatible endpoint such as Ollama, vLLM, or LiteLLM
+- `OPENROUTER_API_KEY` for the default hosted path through OpenRouter
+
+If both `AI_BASE_URL` and `AI_MODEL` are set, AgentLogs prefers the OpenAI-compatible endpoint. If no AI backend is configured, summary generation falls back to a generic placeholder title.
+
 <table>
   <thead>
     <tr>
@@ -254,10 +262,56 @@ If both GitHub and GitLab are configured, AgentLogs currently prefers GitHub for
         <code>OPENROUTER_API_KEY</code>
       </td>
       <td style={{ whiteSpace: "nowrap" }}>unset</td>
-      <td>Enables AI-generated summaries.</td>
+      <td>Enables AI-generated summaries through OpenRouter when no custom AI endpoint is configured.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>AI_BASE_URL</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>unset</td>
+      <td>
+        Base URL for an OpenAI-compatible API. Typical values end in <code>/v1</code>.
+      </td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>AI_MODEL</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>unset</td>
+      <td>
+        Required with <code>AI_BASE_URL</code>. Model identifier sent to the compatible endpoint.
+      </td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: "nowrap" }}>
+        <code>AI_API_KEY</code>
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>unset</td>
+      <td>Optional API key for the compatible endpoint. Leave blank for local providers that do not require auth.</td>
     </tr>
   </tbody>
 </table>
+
+#### OpenAI-compatible endpoints
+
+Use these variables when you want AgentLogs to keep summary generation inside your own infrastructure:
+
+```bash
+AI_BASE_URL=http://localhost:11434/v1
+AI_MODEL=llama3.2
+AI_API_KEY=
+```
+
+- For Docker deployments that call an Ollama server running on the host, use `http://host.docker.internal:11434/v1`
+- For gateways like LiteLLM or vLLM, set `AI_MODEL` to the model name that gateway exposes
+
+#### OpenRouter
+
+Use OpenRouter when you want a hosted default without running your own model server:
+
+```bash
+OPENROUTER_API_KEY=...
+```
 
 ### Runtime
 

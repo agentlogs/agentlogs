@@ -141,6 +141,16 @@ See the full guide at [Hosting Docs](https://agentlogs.ai/docs/server/hosting).
 - `BETTER_AUTH_SECRET` (generate with `openssl rand -base64 32`)
 - `WEB_URL` (public app URL, e.g. `https://logs.example.com`)
 
+### Optional AI Summary Backend
+
+AgentLogs can generate short transcript titles automatically. Configure one of:
+
+- `OPENROUTER_API_KEY` for the default hosted backend
+- `AI_BASE_URL` and `AI_MODEL` for any OpenAI-compatible endpoint (Ollama, vLLM, LiteLLM, and similar)
+- `AI_API_KEY` if your OpenAI-compatible endpoint requires authentication
+
+If `AI_BASE_URL` and `AI_MODEL` are set, AgentLogs prefers that endpoint and only falls back to OpenRouter when the custom backend is not configured. See the full [Hosting Docs](https://agentlogs.ai/docs/server/hosting#ai-features).
+
 ### Local Development (From Source)
 
 Requires [Bun](https://bun.sh/) v1.3.10.
@@ -157,6 +167,12 @@ cp packages/server/.env.example packages/server/.env
 #   GITHUB_CLIENT_SECRET=...
 #   BETTER_AUTH_SECRET=...  (openssl rand -base64 32)
 #   WEB_URL=http://localhost:3000
+# Optional AI summaries:
+#   OPENROUTER_API_KEY=...
+# or use an OpenAI-compatible endpoint:
+#   AI_BASE_URL=http://localhost:11434/v1
+#   AI_MODEL=llama3.2
+#   AI_API_KEY=...  # only if your endpoint requires auth
 
 # Initialize database
 bun db:migrate
