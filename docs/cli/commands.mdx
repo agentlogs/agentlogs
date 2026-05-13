@@ -265,14 +265,14 @@ npx agentlogs cline upload [taskIdOrPath]
 **Examples:**
 
 ```bash
-# List recent Cline tasks and choose one to upload
+# List recent Cline task IDs
 npx agentlogs cline upload
 
 # Upload by task ID
 npx agentlogs cline upload 01234567-89ab-cdef-0123-456789abcdef
 
 # Upload by task directory or file path
-npx agentlogs cline upload ~/Documents/Cline/Tasks/01234567-89ab-cdef-0123-456789abcdef
+npx agentlogs cline upload ~/.cline/data/tasks/01234567-89ab-cdef-0123-456789abcdef
 ```
 
 ### cline hook
@@ -312,7 +312,7 @@ npx agentlogs pi upload [sessionIdOrPath]
 **Examples:**
 
 ```bash
-# List recent Pi sessions and choose one to upload
+# List recent Pi session IDs
 npx agentlogs pi upload
 
 # Upload by session ID
