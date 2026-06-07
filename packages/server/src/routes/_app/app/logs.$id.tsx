@@ -1391,6 +1391,18 @@ function getToolDisplayName(toolName: string | null): string {
   return toolName || "Tool";
 }
 
+// Extract file path from a unified diff header (Index: or --- line)
+function extractFilePathFromDiff(diff: string): string {
+  const indexMatch = diff.match(/^Index:\s+(.+)$/m);
+  if (indexMatch) return indexMatch[1].replace(/^\.\//, "");
+  const minusMatch = diff.match(/^---\s+(.+)$/m);
+  if (minusMatch) {
+    const path = minusMatch[1].replace(/^[ab]\//, "").replace(/^\.\//, "");
+    if (path !== "/dev/null") return path;
+  }
+  return "";
+}
+
 // Debug section - shows raw JSON data (only shown when admin has debug mode enabled)
 function AdminDebugSection({ input, output, error }: { input: unknown; output: unknown; error?: string }) {
   return (
@@ -1455,6 +1467,8 @@ function ToolCallBlock({
   const outputObj = output as Record<string, unknown> | undefined;
   const fileObj = outputObj?.file as Record<string, unknown> | undefined;
   const isEditWithDiff = toolName === "Edit" && !!inputObj?.file_path && !!inputObj?.diff;
+  const isEditWithOutputDiff =
+    toolName === "Edit" && typeof outputObj?.diff === "string" && outputObj.diff.startsWith("Index:");
   const isWriteWithContent = toolName === "Write" && !!inputObj?.file_path && !!inputObj?.content;
   const isReadWithContent = toolName === "Read" && !!inputObj?.file_path && !!fileObj?.content;
   const isBashWithCommand = toolName === "Bash" && !!inputObj?.command;
@@ -1466,7 +1480,11 @@ function ToolCallBlock({
   const isWebSearchWithResults = toolName === "WebSearch" && Array.isArray(outputObj?.results);
 
   // Calculate diff stats for Edit tool
-  const diffStats = isEditWithDiff ? parseDiffStats(String(inputObj!.diff)) : null;
+  const diffStats = isEditWithDiff
+    ? parseDiffStats(String(inputObj!.diff))
+    : isEditWithOutputDiff
+      ? parseDiffStats(String(outputObj!.diff))
+      : null;
 
   // Calculate line count for Write tool
   const writeLineCount = isWriteWithContent ? String(inputObj!.content).split("\n").length : 0;
@@ -1479,7 +1497,11 @@ function ToolCallBlock({
     : "";
 
   // Determine file path for file-based tools (strip ./ prefix for cleaner display)
-  const filePath = inputObj?.file_path ? String(inputObj.file_path).replace(/^\.\//, "") : "";
+  const filePath = inputObj?.file_path
+    ? String(inputObj.file_path).replace(/^\.\//, "")
+    : isEditWithOutputDiff
+      ? extractFilePathFromDiff(String(outputObj!.diff))
+      : "";
 
   // Common styles
   const collapsibleClassName =
@@ -1526,6 +1548,48 @@ function ToolCallBlock({
             {isWriteWithContent && (
               <DiffViewer filePath={filePath} diff={contentToDiff(String(inputObj!.content))} hideHeader />
             )}
+            {(error || isError) && (
+              <div className="m-3 rounded-lg bg-destructive/10 p-3">
+                <div className="mb-1.5 text-xs font-medium text-destructive">Error</div>
+                <pre className="text-xs text-destructive">{error || "Operation failed"}</pre>
+              </div>
+            )}
+            {showDebugInfo && <AdminDebugSection input={input} output={output} error={error} />}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    );
+  }
+
+  // For Edit tool with diff in output (e.g. opencode-style Edit with oldString/newString in input, diff in output)
+  if (isEditWithOutputDiff) {
+    const outputDiff = String(outputObj!.diff);
+
+    return (
+      <Collapsible id={messageId} defaultOpen={false} className={collapsibleClassName}>
+        <CollapsibleTrigger className={triggerClassName}>
+          <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="text-sm font-medium">{displayName}</span>
+          <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{filePath}</span>
+          {diffStats && !error && !isError && (
+            <span className="flex shrink-0 items-center gap-1 text-sm">
+              {diffStats.added - diffStats.modified > 0 && (
+                <span className="text-green-500">+{diffStats.added - diffStats.modified}</span>
+              )}
+              {diffStats.removed - diffStats.modified > 0 && (
+                <span className="text-red-400">-{diffStats.removed - diffStats.modified}</span>
+              )}
+              {diffStats.modified > 0 && <span className="text-yellow-500">~{diffStats.modified}</span>}
+            </span>
+          )}
+          {(error || isError) && (
+            <span className="shrink-0 rounded bg-destructive/20 px-1.5 py-0.5 text-xs text-destructive">Error</span>
+          )}
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[open]:rotate-180" />
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div>
+            <DiffViewer filePath={filePath} diff={outputDiff} hideHeader />
             {(error || isError) && (
               <div className="m-3 rounded-lg bg-destructive/10 p-3">
                 <div className="mb-1.5 text-xs font-medium text-destructive">Error</div>
