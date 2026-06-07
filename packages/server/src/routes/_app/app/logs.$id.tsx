@@ -1932,6 +1932,13 @@ function ToolCallBlock({
                   {textContents.join("\n\n")}
                 </MarkdownRenderer>
               )}
+              {/* Raw string output fallback */}
+              {textContents.length === 0 && typeof output === "string" && (
+                <div>
+                  <div className="mb-1.5 text-xs font-medium text-muted-foreground">Output</div>
+                  <CodeBlock content={output} language="txt" />
+                </div>
+              )}
               {/* Error display */}
               {error && (
                 <div>
@@ -2159,14 +2166,25 @@ function ToolCallBlock({
           {input != null && (
             <div>
               <div className="mb-1.5 text-xs font-medium text-muted-foreground">Input</div>
-              <CodeBlock content={JSON.stringify(replaceImageReferencesForDisplay(input), null, 2)} language="json" />
+              {typeof input === "string" ? (
+                <CodeBlock content={input} language="txt" />
+              ) : (
+                <CodeBlock content={JSON.stringify(replaceImageReferencesForDisplay(input), null, 2)} language="json" />
+              )}
               <ImageGallery images={inputImages} />
             </div>
           )}
           {output != null && (
             <div>
               <div className="mb-1.5 text-xs font-medium text-muted-foreground">Output</div>
-              <CodeBlock content={JSON.stringify(replaceImageReferencesForDisplay(output), null, 2)} language="json" />
+              {typeof output === "string" ? (
+                <CodeBlock content={output} language="txt" />
+              ) : (
+                <CodeBlock
+                  content={JSON.stringify(replaceImageReferencesForDisplay(output), null, 2)}
+                  language="json"
+                />
+              )}
             </div>
           )}
           {error && (
