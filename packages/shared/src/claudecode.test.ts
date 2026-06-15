@@ -1507,4 +1507,127 @@ describe("convertClaudeCodeTranscript", () => {
     const result = convertClaudeCodeTranscript(metaOnlyTranscript);
     expect(result).toBeNull();
   });
+
+  test("includes queued steering prompts as user messages", () => {
+    const transcript = [
+      {
+        parentUuid: null,
+        isSidechain: false,
+        cwd: "/Users/test/dev/project",
+        sessionId: "test-session",
+        version: "2.1.31",
+        gitBranch: "main",
+        type: "user",
+        message: {
+          role: "user",
+          content: "Deploy it",
+        },
+        uuid: "user-1",
+        timestamp: "2026-02-05T13:18:17.000Z",
+      },
+      {
+        parentUuid: "user-1",
+        isSidechain: false,
+        cwd: "/Users/test/dev/project",
+        sessionId: "test-session",
+        version: "2.1.31",
+        gitBranch: "main",
+        type: "assistant",
+        message: {
+          id: "assistant-1",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-1",
+              name: "Bash",
+              input: { command: "deploy" },
+            },
+          ],
+        },
+        uuid: "assistant-record-1",
+        timestamp: "2026-02-05T13:18:18.000Z",
+      },
+      {
+        parentUuid: "assistant-record-1",
+        isSidechain: false,
+        cwd: "/Users/test/dev/project",
+        sessionId: "test-session",
+        version: "2.1.31",
+        gitBranch: "main",
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-1",
+              content: "done",
+              is_error: false,
+            },
+          ],
+        },
+        toolUseResult: {
+          stdout: "done",
+          stderr: "",
+          interrupted: false,
+          isImage: false,
+          noOutputExpected: false,
+        },
+        uuid: "tool-result-1",
+        timestamp: "2026-02-05T13:18:19.000Z",
+      },
+      {
+        parentUuid: "tool-result-1",
+        isSidechain: false,
+        cwd: "/Users/test/dev/project",
+        sessionId: "test-session",
+        version: "2.1.31",
+        gitBranch: "main",
+        type: "attachment",
+        attachment: {
+          type: "queued_command",
+          prompt: "if that's it, then redeploy, I rotated the secret and set the new one",
+          commandMode: "prompt",
+        },
+        uuid: "queued-command-1",
+        timestamp: "2026-02-05T13:18:19.001Z",
+      },
+      {
+        parentUuid: "queued-command-1",
+        isSidechain: false,
+        cwd: "/Users/test/dev/project",
+        sessionId: "test-session",
+        version: "2.1.31",
+        gitBranch: "main",
+        type: "assistant",
+        message: {
+          id: "assistant-2",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [
+            {
+              type: "text",
+              text: "Redeploying now.",
+            },
+          ],
+        },
+        uuid: "assistant-record-2",
+        timestamp: "2026-02-05T13:18:20.000Z",
+      },
+    ];
+
+    const result = convertClaudeCodeTranscript(transcript);
+    expect(result).not.toBeNull();
+    expect(result?.transcript.userMessageCount).toBe(2);
+    expect(result?.transcript.messages).toContainEqual(
+      expect.objectContaining({
+        type: "user",
+        id: "queued-command-1",
+        variant: "steering",
+        text: "if that's it, then redeploy, I rotated the secret and set the new one",
+      }),
+    );
+  });
 });

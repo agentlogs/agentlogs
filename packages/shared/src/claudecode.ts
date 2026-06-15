@@ -1402,6 +1402,24 @@ function stripAnsiCodes(text: string): string {
   return text.replace(/\x1B\[[0-9;]*m/g, "");
 }
 
+function extractQueuedCommandPrompt(record: ClaudeMessageRecord): string | null {
+  if (record.type !== "attachment") {
+    return null;
+  }
+
+  const attachment = record.raw.attachment;
+  if (!attachment || typeof attachment !== "object") {
+    return null;
+  }
+
+  const attachmentRecord = attachment as Record<string, unknown>;
+  if (attachmentRecord.type !== "queued_command") {
+    return null;
+  }
+
+  return asNonEmptyString(attachmentRecord.prompt) ?? null;
+}
+
 type ConvertMessagesResult = {
   messages: UnifiedTranscriptMessage[];
   blobs: Map<string, TranscriptBlob>;
@@ -1440,6 +1458,45 @@ function convertTranscriptToMessages(transcript: ClaudeMessageRecord[]): Convert
   // Get cwd for path relativization
   const cwd = deriveWorkingDirectory(transcript);
 
+  const addUserMessage = (
+    id: string,
+    timestamp: string | undefined,
+    text: string,
+    images: Array<{ sha256: string; mediaType: string }> = [],
+    variant?: "steering",
+  ) => {
+    const dedupeKey = `${timestamp}:${text}`;
+    const existing = seenUserMessages.get(dedupeKey);
+
+    if (existing) {
+      if (!existing.hasImages && images.length > 0) {
+        const existingMsg = messages[existing.index] as Record<string, unknown>;
+        existingMsg.images = images;
+        existing.hasImages = true;
+      }
+      return;
+    }
+
+    const messageData: Record<string, unknown> = {
+      type: "user",
+      text,
+      id,
+      timestamp,
+    };
+
+    if (variant) {
+      messageData.variant = variant;
+    }
+
+    if (images.length > 0) {
+      messageData.images = images;
+    }
+
+    const msgIndex = messages.length;
+    messages.push(unifiedTranscriptMessageSchema.parse(messageData));
+    seenUserMessages.set(dedupeKey, { index: msgIndex, hasImages: images.length > 0 });
+  };
+
   for (const record of transcript) {
     if (record.isMeta) {
       continue;
@@ -1447,6 +1504,14 @@ function convertTranscriptToMessages(transcript: ClaudeMessageRecord[]): Convert
 
     const metadata = buildMessageMetadata(record);
     const type = record.type;
+
+    if (type === "attachment") {
+      const queuedPrompt = extractQueuedCommandPrompt(record);
+      if (queuedPrompt) {
+        addUserMessage(record.uuid, metadata.timestamp, queuedPrompt, [], "steering");
+      }
+      continue;
+    }
 
     if (type === "user") {
       const { texts, images, toolResults } = extractUserContent(record, blobs);
@@ -1521,38 +1586,8 @@ function convertTranscriptToMessages(transcript: ClaudeMessageRecord[]): Convert
 
         const messageType = record.isCompactSummary ? "compaction-summary" : "user";
 
-        // Deduplicate user messages with same timestamp and text
-        // Claude Code sometimes logs the same message twice (once with images, once without)
         if (messageType === "user") {
-          const dedupeKey = `${metadata.timestamp}:${cleanedText}`;
-          const existing = seenUserMessages.get(dedupeKey);
-
-          if (existing) {
-            // If this version has images and the existing one doesn't, update it
-            if (!existing.hasImages && images.length > 0) {
-              const existingMsg = messages[existing.index] as Record<string, unknown>;
-              existingMsg.images = images;
-              existing.hasImages = true;
-            }
-            // Skip adding duplicate
-            continue;
-          }
-
-          const messageData: Record<string, unknown> = {
-            type: messageType,
-            text: cleanedText,
-            id: record.uuid,
-            timestamp: metadata.timestamp,
-          };
-
-          // Attach images to this user message
-          if (images.length > 0) {
-            messageData.images = images;
-          }
-
-          const msgIndex = messages.length;
-          messages.push(unifiedTranscriptMessageSchema.parse(messageData));
-          seenUserMessages.set(dedupeKey, { index: msgIndex, hasImages: images.length > 0 });
+          addUserMessage(record.uuid, metadata.timestamp, cleanedText, images);
         } else {
           // Non-user message (compaction-summary)
           const messageData: Record<string, unknown> = {

@@ -10,6 +10,7 @@ const imageReferenceSchema = z.object({
 const userMessageSchema = z.object({
   type: z.literal("user"),
   text: z.string(),
+  variant: z.enum(["steering"]).optional(),
   images: z.array(imageReferenceSchema).optional(),
   id: z.string().optional(),
   timestamp: z.string().optional(),
