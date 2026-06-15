@@ -64,6 +64,9 @@ const faqs = [
 ];
 
 function LandingPage() {
+  // Session is fetched once in the root route's beforeLoad and shared via context.
+  const { session } = Route.useRouteContext();
+
   return (
     <div className="bg-background text-foreground">
       {/* Nav */}
@@ -86,10 +89,10 @@ function LandingPage() {
               GitHub
             </a>
             <a
-              href="/auth/login"
+              href={session ? "/app" : "/auth/login"}
               className="rounded-md bg-primary px-3 py-1.5 text-primary-foreground hover:bg-primary/90"
             >
-              Log in
+              {session ? "Go to app" : "Log in"}
             </a>
           </div>
         </div>
@@ -164,10 +167,10 @@ function LandingPage() {
           </p>
           <div className="mt-8 flex gap-3">
             <a
-              href="/auth/login"
+              href={session ? "/app" : "/auth/login"}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
-              Join the cloud waitlist
+              {session ? "Go to app" : "Join the cloud waitlist"}
             </a>
             <a
               href="https://github.com/agentlogs/agentlogs"
