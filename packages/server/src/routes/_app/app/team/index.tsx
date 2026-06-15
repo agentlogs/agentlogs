@@ -1,4 +1,4 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute, useRouter, useRouterState } from "@tanstack/react-router";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,8 +46,18 @@ const PERIOD_OPTIONS: { value: PeriodDays; label: string }[] = [
   { value: 365, label: "1 Year" },
 ];
 
+const DEFAULT_PERIOD_DAYS: PeriodDays = 30;
+
 export const Route = createFileRoute("/_app/app/team/")({
-  loader: () => getTeamDashboardData({ data: { days: 30 } }),
+  // `days` lives in the URL so the loader owns the time window. It's optional for
+  // navigation (links to this page need not specify it); the default is applied where
+  // it's read. Invalid/out-of-range values fall back to the default.
+  validateSearch: (search: Record<string, unknown>): { days?: PeriodDays } => {
+    const raw = Number(search.days);
+    return PERIOD_OPTIONS.some((opt) => opt.value === raw) ? { days: raw as PeriodDays } : {};
+  },
+  loaderDeps: ({ search }) => ({ days: search.days ?? DEFAULT_PERIOD_DAYS }),
+  loader: ({ deps: { days } }) => getTeamDashboardData({ data: { days } }),
   component: TeamDashboardPage,
 });
 
@@ -124,36 +134,24 @@ function getAgentIcon(agent: string | null) {
 }
 
 function TeamDashboardPage() {
-  const initialData = Route.useLoaderData();
+  const data = Route.useLoaderData();
+  const { days = DEFAULT_PERIOD_DAYS } = Route.useSearch();
   const router = useRouter();
-  const [days, setDays] = useState<PeriodDays>(30);
-  const [data, setData] = useState(initialData);
-  const [isLoading, setIsLoading] = useState(false);
+  const navigate = Route.useNavigate();
+  // Dim the page while the route loader is (re)fetching — e.g. on a period change.
+  const isLoading = useRouterState({ select: (s) => s.isLoading });
   const [isDeleting, setIsDeleting] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
 
   const { team, stats, memberStats, activity, userNames, isHourly, modelUsage, agentUsage, session } = data;
 
-  const refresh = async () => {
-    setIsLoading(true);
-    try {
-      const newData = await getTeamDashboardData({ data: { days } });
-      setData(newData);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Re-run the route loader so the page reflects the latest server data.
+  const refresh = () => router.invalidate();
 
-  const handlePeriodChange = async (newDays: string) => {
-    const d = Number(newDays) as PeriodDays;
-    setDays(d);
-    setIsLoading(true);
-    try {
-      const newData = await getTeamDashboardData({ data: { days: d } });
-      setData(newData);
-    } finally {
-      setIsLoading(false);
-    }
+  // The period lives in the URL (?days=); navigating re-runs the loader, and the
+  // fresh data flows back through useLoaderData — one source of truth for the page.
+  const handlePeriodChange = (newDays: string) => {
+    navigate({ search: { days: Number(newDays) as PeriodDays }, replace: true });
   };
 
   const handleDeleteTeam = async () => {
