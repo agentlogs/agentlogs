@@ -1,0 +1,6 @@
+{"type":"user","cwd":"/Users/me","gitBranch":"main","content":"kick off work from home"}
+{"type":"assistant","cwd":"/Users/me","content":"cd into the clone"}
+{"type":"user","cwd":"/Users/me/Projects/repo","gitBranch":"feature/x","content":"work here"}
+{"type":"assistant","cwd":"/Users/me/Projects/repo","content":"editing files"}
+{"type":"assistant","cwd":"/Users/me/Projects/repo","content":"running tests"}
+{"type":"assistant","cwd":"/Users/me/Projects/repo","content":"pushing branch"}

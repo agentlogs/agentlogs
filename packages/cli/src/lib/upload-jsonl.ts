@@ -1,6 +1,6 @@
 import type { TranscriptSource } from "@agentlogs/shared";
 import { getAuthenticatedEnvironments } from "../config";
-import { performUploadToAllEnvs, resolveTranscriptPath } from "../lib/perform-upload";
+import { performUploadToAllEnvs, resolveTranscriptPath, skipMessageLines } from "../lib/perform-upload";
 
 export async function uploadCommand(transcriptArg: string, source: TranscriptSource = "claude-code"): Promise<void> {
   if (!transcriptArg) {
@@ -36,8 +36,9 @@ export async function uploadCommand(transcriptArg: string, source: TranscriptSou
     // Handle skipped uploads (repo not allowed)
     if (result.results.length === 0) {
       console.log("");
-      console.log("- Upload skipped (repo not allowed by allowlist)");
-      console.log("  Use `agentlogs allow` to enable uploads for this repo.");
+      for (const line of skipMessageLines(result.candidatesSeen)) {
+        console.log(`- ${line}`);
+      }
       return;
     }
 

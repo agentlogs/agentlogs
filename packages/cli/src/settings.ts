@@ -89,17 +89,15 @@ export function writeSettings(settings: Settings): void {
 export { getRepoId as getRepoIdFromCwd } from "@agentlogs/shared/git";
 
 /**
- * Check if a repo is allowed for capture based on settings
+ * Pure allowlist check against an explicit settings snapshot.
  */
-export function isRepoAllowed(repoId: string | null): boolean {
+export function isRepoAllowedWithSettings(repoId: string | null, settings: Settings): boolean {
   if (!repoId) {
-    // If we can't determine the repo, use the default behavior
-    // In denylist mode, capture. In allowlist mode, don't capture.
-    const settings = readSettings();
+    // If we can't determine the repo, use the default behavior:
+    // denylist mode captures, allowlist mode does not.
     return settings.allowMode === "denylist";
   }
 
-  const settings = readSettings();
   const repoSettings = settings.repos[repoId];
 
   if (settings.allowMode === "denylist") {
@@ -115,6 +113,21 @@ export function isRepoAllowed(repoId: string | null): boolean {
     }
     return repoSettings.allow;
   }
+}
+
+/**
+ * Check if a repo is allowed for capture based on settings.
+ */
+export function isRepoAllowed(repoId: string | null): boolean {
+  return isRepoAllowedWithSettings(repoId, readSettings());
+}
+
+/**
+ * Build an allowlist predicate bound to a single settings snapshot, so callers
+ * that check many repo ids in one pass read settings.json once instead of per id.
+ */
+export function createRepoAllowedChecker(settings: Settings = readSettings()): (repoId: string | null) => boolean {
+  return (repoId) => isRepoAllowedWithSettings(repoId, settings);
 }
 
 /**
