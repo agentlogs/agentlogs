@@ -16,6 +16,7 @@
     "./cline": "./src/cline.ts",
     "./codex": "./src/codex.ts",
     "./opencode": "./src/opencode.ts",
+    "./openclaw": "./src/openclaw.ts",
     "./pricing": "./src/pricing.ts",
     "./redact": "./src/redact.ts",
     "./redact-sensitive-files": "./src/redact-sensitive-files.ts",
