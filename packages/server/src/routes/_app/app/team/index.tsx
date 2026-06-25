@@ -33,7 +33,13 @@ import {
   leaveTeam,
   removeMember,
 } from "../../../../lib/server-functions";
-import { ClaudeCodeIcon, CodexIcon, OpenCodeIcon, PiIcon } from "../../../../components/icons/source-icons";
+import {
+  ClaudeCodeIcon,
+  CodexIcon,
+  OpenClawIcon,
+  OpenCodeIcon,
+  PiIcon,
+} from "../../../../components/icons/source-icons";
 import { getModelDisplayName } from "@agentlogs/shared/models";
 
 type PeriodDays = 1 | 7 | 30 | 90 | 365;
@@ -103,6 +109,8 @@ function getAgentDisplayName(agent: string): string {
       return "Codex CLI";
     case "opencode":
       return "OpenCode";
+    case "openclaw":
+      return "OpenClaw";
     default:
       return agent || "Unknown";
   }
@@ -116,6 +124,8 @@ function getAgentIcon(agent: string | null) {
       return CodexIcon;
     case "opencode":
       return OpenCodeIcon;
+    case "openclaw":
+      return OpenClawIcon;
     case "pi":
       return PiIcon;
     default:

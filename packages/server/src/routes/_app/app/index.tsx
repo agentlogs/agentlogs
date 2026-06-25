@@ -9,6 +9,7 @@ import {
   ClineIcon,
   CodexIcon,
   GitHubIcon,
+  OpenClawIcon,
   OpenCodeIcon,
   PiIcon,
 } from "../../../components/icons/source-icons";
@@ -139,6 +140,8 @@ function getSourceIcon(source: string, className?: string) {
       return <ClineIcon className={className} />;
     case "opencode":
       return <OpenCodeIcon className={className} />;
+    case "openclaw":
+      return <OpenClawIcon className={className} />;
     case "pi":
       return <PiIcon className={className} />;
     default:

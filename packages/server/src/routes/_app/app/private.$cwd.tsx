@@ -24,6 +24,8 @@ function PrivateDetailComponent() {
         return "Codex";
       case "cline":
         return "Cline";
+      case "openclaw":
+        return "OpenClaw";
       default:
         return "Unknown";
     }
