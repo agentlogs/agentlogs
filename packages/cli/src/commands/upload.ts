@@ -3,6 +3,7 @@ import { sync as spawnSync } from "cross-spawn";
 import { existsSync, readFileSync } from "fs";
 import { discoverAllTranscripts, type DiscoveredTranscript, type TranscriptSource } from "@agentlogs/shared";
 import { convertOpenCodeTranscript, type OpenCodeExport } from "@agentlogs/shared/opencode";
+import { convertOpenClawTranscript, parseOpenClawRecords } from "@agentlogs/shared/openclaw";
 import { convertClineTranscript, type ClineMessage, type ClineTaskMetadata } from "@agentlogs/shared";
 import { convertPiTranscript, type PiSessionEntry, type PiSessionHeader } from "@agentlogs/shared";
 import { LiteLLMPricingFetcher } from "@agentlogs/shared/pricing";
@@ -90,6 +91,8 @@ async function uploadTranscript(transcript: DiscoveredTranscript): Promise<boole
         return await uploadCodexTranscript(transcript);
       case "opencode":
         return await uploadOpenCodeTranscript(transcript);
+      case "openclaw":
+        return await uploadOpenClawTranscript(transcript);
       case "cline":
         return await uploadClineTranscript(transcript);
       case "pi":
@@ -98,6 +101,52 @@ async function uploadTranscript(transcript: DiscoveredTranscript): Promise<boole
   } catch (error) {
     console.error("");
     console.error("Upload failed:", error instanceof Error ? error.message : String(error));
+    return false;
+  }
+}
+
+async function uploadOpenClawTranscript(transcript: DiscoveredTranscript): Promise<boolean> {
+  const records = parseOpenClawRecords(readFileSync(transcript.path, "utf-8"));
+
+  const cwd = transcript.cwd ?? process.cwd();
+  const gitContext = await resolveGitContext(cwd, undefined);
+  if (gitContext?.repo) {
+    console.log(`Repository: ${gitContext.repo}`);
+  }
+
+  console.log("Converting transcript...");
+  const unifiedTranscript = convertOpenClawTranscript(records, { gitContext, cwd });
+  if (!unifiedTranscript) {
+    throw new Error("Failed to convert OpenClaw transcript");
+  }
+
+  console.log("Uploading...");
+  const result = await uploadUnifiedToAllEnvs({ unifiedTranscript, sessionId: transcript.id, cwd });
+
+  if (result.skipped) {
+    console.log("");
+    console.log("Skipped: Repository not in allowlist");
+    return true; // Skipped is not a failure
+  }
+
+  if (result.anySuccess && result.id) {
+    console.log("");
+    console.log("Upload successful!");
+    console.log(`Transcript ID: ${result.id}`);
+    for (const envResult of result.results) {
+      if (envResult.success) {
+        console.log(`View: ${envResult.baseURL}/s/${result.id}`);
+      }
+    }
+    return true;
+  } else {
+    console.error("");
+    console.error("Upload failed:");
+    for (const envResult of result.results) {
+      if (!envResult.success && envResult.error) {
+        console.error(`  ${envResult.envName}: ${envResult.error}`);
+      }
+    }
     return false;
   }
 }
