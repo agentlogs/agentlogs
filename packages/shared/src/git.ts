@@ -53,28 +53,65 @@ export async function locateGitRoot(start: string): Promise<string | null> {
   }
 }
 
+export interface GitRemote {
+  name: string;
+  url: string;
+}
+
 /**
- * Read the origin remote URL from .git/config
+ * Read every remote (name + url) from .git/config.
+ * Remotes are returned with "origin" first (when present), then in file order.
  */
-export async function readGitRemoteUrl(repoRoot: string): Promise<string | null> {
+export async function readGitRemotes(repoRoot: string): Promise<GitRemote[]> {
   try {
     const configPath = path.join(repoRoot, ".git", "config");
     const configContent = await fs.readFile(configPath, "utf8");
 
-    // Look for remote "origin" url
-    const remoteMatch = configContent.match(/\[remote "origin"\]\s+url\s*=\s*(.+)/i);
-    if (!remoteMatch || !remoteMatch[1]) {
-      return null;
+    const remotes: GitRemote[] = [];
+    let currentRemote: string | null = null;
+
+    for (const rawLine of configContent.split(/\r?\n/)) {
+      const line = rawLine.trim();
+
+      const sectionMatch = line.match(/^\[remote "([^"]+)"\]/i);
+      if (sectionMatch && sectionMatch[1]) {
+        currentRemote = sectionMatch[1];
+        continue;
+      }
+      // Any other section header ends the current remote section.
+      if (line.startsWith("[")) {
+        currentRemote = null;
+        continue;
+      }
+
+      if (currentRemote) {
+        const urlMatch = line.match(/^url\s*=\s*(.+)$/i);
+        if (urlMatch && urlMatch[1]) {
+          remotes.push({ name: currentRemote, url: urlMatch[1].trim() });
+          currentRemote = null;
+        }
+      }
     }
 
-    return remoteMatch[1].trim();
+    // Stable order: origin first, everything else in file order.
+    return remotes.sort((a, b) => (a.name === "origin" ? -1 : 0) - (b.name === "origin" ? -1 : 0));
   } catch {
-    return null;
+    return [];
   }
 }
 
 /**
- * Get the repo ID from a git root directory.
+ * Read the origin remote URL from .git/config.
+ * Origin-only by design: returns null when there is no `origin` remote, matching
+ * the historical contract. Multi-remote resolution lives in getRepoIdsFromGitRoot.
+ */
+export async function readGitRemoteUrl(repoRoot: string): Promise<string | null> {
+  const remotes = await readGitRemotes(repoRoot);
+  return remotes.find((remote) => remote.name === "origin")?.url ?? null;
+}
+
+/**
+ * Get the repo ID from a git root directory (origin remote).
  * Returns format: "host/owner/repo" (e.g., "github.com/owner/repo")
  */
 export async function getRepoIdFromGitRoot(repoRoot: string): Promise<string | null> {
@@ -83,6 +120,31 @@ export async function getRepoIdFromGitRoot(repoRoot: string): Promise<string | n
     return null;
   }
   return parseGitRemoteUrl(url);
+}
+
+export interface RepoRemoteId {
+  repoId: string;
+  remote: string;
+}
+
+/**
+ * Get every repo ID reachable from a git root's remotes (not just origin).
+ * Useful for fork workflows where `origin` is a personal fork but `upstream`
+ * (or another remote) points at the canonical repo. Returns origin-first,
+ * de-duplicated by repoId.
+ */
+export async function getRepoIdsFromGitRoot(repoRoot: string): Promise<RepoRemoteId[]> {
+  const remotes = await readGitRemotes(repoRoot);
+  const seen = new Set<string>();
+  const result: RepoRemoteId[] = [];
+  for (const remote of remotes) {
+    const repoId = parseGitRemoteUrl(remote.url);
+    if (repoId && !seen.has(repoId)) {
+      seen.add(repoId);
+      result.push({ repoId, remote: remote.name });
+    }
+  }
+  return result;
 }
 
 /**
