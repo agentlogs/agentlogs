@@ -58,6 +58,7 @@ import {
   CodexIcon,
   GitHubIcon,
   MCPIcon,
+  OpenClawIcon,
   OpenCodeIcon,
   PiIcon,
 } from "../../../components/icons/source-icons";
@@ -168,6 +169,8 @@ function getSourceIcon(source: string, className?: string) {
       return <ClaudeCodeIcon className={className} />;
     case "opencode":
       return <OpenCodeIcon className={className} />;
+    case "openclaw":
+      return <OpenClawIcon className={className} />;
     case "pi":
       return <PiIcon className={className} />;
     case "cline":

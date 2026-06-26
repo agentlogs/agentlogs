@@ -75,6 +75,17 @@ function PiIcon() {
   );
 }
 
+// OpenClaw icon (claw-mark placeholder; fill-based for OG rendering)
+function OpenClawIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="#a1a1aa">
+      <rect x="4.6" y="3" width="2.4" height="18" rx="1.2" />
+      <rect x="10.8" y="3" width="2.4" height="18" rx="1.2" />
+      <rect x="17" y="3" width="2.4" height="18" rx="1.2" />
+    </svg>
+  );
+}
+
 // Get source icon component based on source string
 function SourceIcon({ source }: { source: string }) {
   switch (source) {
@@ -84,6 +95,8 @@ function SourceIcon({ source }: { source: string }) {
       return <CodexIcon />;
     case "opencode":
       return <OpenCodeIcon />;
+    case "openclaw":
+      return <OpenClawIcon />;
     case "pi":
       return <PiIcon />;
     default:

@@ -23,6 +23,17 @@ export {
   type OpenCodeToolState,
 } from "./opencode";
 export {
+  convertOpenClawTranscript,
+  parseOpenClawRecords,
+  type ConvertOpenClawOptions,
+  type OpenClawRecord,
+  type OpenClawSessionRecord,
+  type OpenClawMessageRecord,
+  type OpenClawCompactionRecord,
+  type OpenClawInnerMessage,
+  type OpenClawContentBlock,
+} from "./openclaw";
+export {
   convertPiTranscript,
   convertPiFile,
   type ConvertPiOptions,

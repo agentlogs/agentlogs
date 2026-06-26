@@ -23,6 +23,7 @@ import { codexUploadCommand } from "./commands/codex/upload";
 // OpenCode commands
 import { opencodeUploadCommand } from "./commands/opencode/upload";
 import { hookCommand as openCodeHookCommand } from "./commands/opencode/hook";
+import { openclawUploadCommand } from "./commands/openclaw/upload";
 // Pi commands
 import { piUploadCommand } from "./commands/pi/upload";
 import { piHookCommand } from "./commands/pi/hook";
@@ -60,11 +61,11 @@ program
 program
   .command("upload")
   .argument("[directory]", "Filter transcripts to this directory")
-  .option("-s, --source <source>", "Filter by source: claude-code, cline, codex, opencode, or pi")
+  .option("-s, --source <source>", "Filter by source: claude-code, cline, codex, opencode, openclaw, or pi")
   .option("-l, --latest", "Upload the most recent transcript without picker")
   .description("Interactively select and upload a transcript")
   .action(async (directory: string | undefined, options: { source?: string; latest?: boolean }) => {
-    const source = options.source as "claude-code" | "codex" | "opencode" | undefined;
+    const source = options.source as "claude-code" | "codex" | "opencode" | "openclaw" | undefined;
     await interactiveUploadCommand(directory, { source, latest: options.latest });
   });
 
@@ -124,6 +125,16 @@ opencode
   .description("Process OpenCode hook input from stdin")
   .action(async () => {
     await openCodeHookCommand();
+  });
+
+const openclaw = program.command("openclaw").description("OpenClaw transcript utilities for AgentLogs");
+
+openclaw
+  .command("upload")
+  .argument("<session>", "OpenClaw session id or path to a session .jsonl")
+  .description("Upload an OpenClaw session transcript to AgentLogs")
+  .action(async (session: string) => {
+    await openclawUploadCommand(session);
   });
 
 const cline = program.command("cline").description("Cline transcript utilities for AgentLogs");

@@ -83,6 +83,27 @@ export function PiIcon({ className, ...props }: IconProps) {
   );
 }
 
+export function OpenClawIcon({ className, ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.2}
+      strokeLinecap="round"
+      className={className}
+      {...props}
+    >
+      <path d="M7 3c2 5 2 11 1 18" />
+      <path d="M12 3c1 5 1 11 0 18" />
+      <path d="M17 3c-2 5-2 11-1 18" />
+    </svg>
+  );
+}
+
 export function GitHubIcon({ className, ...props }: IconProps) {
   return (
     <svg

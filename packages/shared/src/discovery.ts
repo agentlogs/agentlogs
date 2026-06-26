@@ -65,6 +65,7 @@ const DEFAULT_CLAUDE_HOME = join(homedir(), ".claude");
 const DEFAULT_CLINE_HOME = join(homedir(), ".cline");
 const DEFAULT_CODEX_HOME = join(homedir(), ".codex");
 const DEFAULT_PI_SESSIONS = join(homedir(), ".pi", "agent", "sessions");
+const DEFAULT_OPENCLAW_SESSIONS = join(homedir(), ".openclaw", "session-backups");
 
 /**
  * Discover Claude Code transcripts from ~/.claude/projects/
@@ -346,6 +347,121 @@ export async function discoverPiSessions(options?: { limit?: number }): Promise<
 }
 
 /**
+ * Discover OpenClaw sessions from ~/.openclaw/session-backups/.
+ * Files are flat JSONL named `<profile>_<uuid>.jsonl`.
+ */
+export async function discoverOpenClawSessions(options?: { limit?: number }): Promise<DiscoveredTranscript[]> {
+  const limit = options?.limit ?? DEFAULT_LIMIT;
+  const sessionsRoot = process.env.OPENCLAW_SESSIONS ?? DEFAULT_OPENCLAW_SESSIONS;
+
+  if (!(await isDirectory(sessionsRoot))) {
+    return [];
+  }
+
+  // Phase 1: collect candidate paths with mtimes (cheap), newest first.
+  const candidates: Array<{ path: string; mtime: Date }> = [];
+  try {
+    const files = await fs.readdir(sessionsRoot, { withFileTypes: true });
+    for (const file of files) {
+      if (!file.isFile() || !file.name.endsWith(".jsonl")) continue;
+      const filePath = join(sessionsRoot, file.name);
+      try {
+        const stat = await fs.stat(filePath);
+        candidates.push({ path: filePath, mtime: stat.mtime });
+      } catch {
+        // Skip inaccessible files
+      }
+    }
+  } catch {
+    // Directory not accessible
+  }
+  candidates.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+
+  // Phase 2: only parse the most recent candidates (mtime ~ session time).
+  const allTranscripts: DiscoveredTranscript[] = [];
+  for (const candidate of candidates.slice(0, limit * 2)) {
+    try {
+      const info = await parseOpenClawSession(candidate.path);
+      if (!info) continue;
+      allTranscripts.push({
+        id: info.sessionId,
+        source: "openclaw",
+        path: candidate.path,
+        timestamp: info.timestamp,
+        preview: info.preview,
+        cwd: info.cwd,
+        repoId: null,
+        stats: null,
+      });
+    } catch {
+      // Skip invalid files
+    }
+  }
+
+  return allTranscripts.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, limit);
+}
+
+/**
+ * Parse an OpenClaw session JSONL for discovery metadata (id, cwd, timestamp,
+ * preview). Scans only until the session header and first user message are found.
+ */
+async function parseOpenClawSession(
+  filePath: string,
+): Promise<{ sessionId: string; cwd: string | null; timestamp: Date; preview: string | null } | null> {
+  // Read only a bounded head, like the other source parsers: the session header
+  // is the first line and the first user message follows shortly after.
+  const fileHandle = await fs.open(filePath, "r");
+  let content: string;
+  try {
+    const { size } = await fileHandle.stat();
+    const headBuffer = Buffer.alloc(Math.min(HEAD_READ_SIZE, size));
+    await fileHandle.read(headBuffer, 0, headBuffer.length, 0);
+    content = headBuffer.toString("utf8");
+  } finally {
+    await fileHandle.close();
+  }
+
+  let sessionId: string | null = null;
+  let cwd: string | null = null;
+  let timestamp: Date | null = null;
+  let preview: string | null = null;
+
+  for (const line of content.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    let record: Record<string, unknown>;
+    try {
+      record = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+
+    if (record.type === "session") {
+      sessionId = typeof record.id === "string" ? record.id : sessionId;
+      cwd = typeof record.cwd === "string" ? record.cwd : cwd;
+      if (typeof record.timestamp === "string") {
+        const parsed = new Date(record.timestamp);
+        if (!Number.isNaN(parsed.getTime())) timestamp = parsed;
+      }
+    } else if (record.type === "message" && preview === null) {
+      const message = record.message as
+        | { role?: string; content?: Array<{ type?: string; text?: string }> }
+        | undefined;
+      if (message?.role === "user" && Array.isArray(message.content)) {
+        const text = message.content.find((b) => b.type === "text" && typeof b.text === "string")?.text;
+        if (text && text.trim()) {
+          preview = truncatePreview(text);
+        }
+      }
+    }
+
+    if (sessionId && preview !== null) break;
+  }
+
+  if (!sessionId) return null;
+  return { sessionId, cwd, timestamp: timestamp ?? new Date(0), preview };
+}
+
+/**
  * Discover Cline transcripts from ~/.cline/data/tasks/
  */
 export async function discoverClineTranscripts(options?: { limit?: number }): Promise<DiscoveredTranscript[]> {
@@ -418,7 +534,7 @@ export async function discoverClineTranscripts(options?: { limit?: number }): Pr
  * Discover transcripts from all sources
  */
 export async function discoverAllTranscripts(options?: DiscoveryOptions): Promise<DiscoveredTranscript[]> {
-  const sources = options?.sources ?? ["claude-code", "cline", "codex", "opencode", "pi"];
+  const sources = options?.sources ?? ["claude-code", "cline", "codex", "opencode", "openclaw", "pi"];
   const limit = options?.limit ?? DEFAULT_LIMIT;
   const cwdFilter = options?.cwd ? resolve(options.cwd) : null;
 
@@ -431,6 +547,7 @@ export async function discoverAllTranscripts(options?: DiscoveryOptions): Promis
     sources.includes("cline") ? discoverClineTranscripts({ limit: perSourceLimit }) : [],
     sources.includes("codex") ? discoverCodexTranscripts({ limit: perSourceLimit }) : [],
     sources.includes("opencode") ? discoverOpenCodeSessions({ limit: perSourceLimit }) : [],
+    sources.includes("openclaw") ? discoverOpenClawSessions({ limit: perSourceLimit }) : [],
     sources.includes("pi") ? discoverPiSessions({ limit: perSourceLimit }) : [],
   ]);
 
