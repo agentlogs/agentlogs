@@ -5,7 +5,7 @@ import {
   type UnifiedTranscript,
   type UnifiedTranscriptMessage,
 } from "./claudecode";
-import { formatCwdWithTilde } from "./paths";
+import { formatCwdWithTilde, relativizePaths } from "./paths";
 import type { LiteLLMModelPricing } from "./pricing";
 import {
   unifiedGitContextSchema,
@@ -140,6 +140,7 @@ export function convertOpenClawTranscript(
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let totalCacheReadTokens = 0;
+  let totalTokens = 0;
 
   for (const record of records) {
     if (!record || typeof record !== "object") continue;
@@ -185,10 +186,16 @@ export function convertOpenClawTranscript(
         primaryModel = model;
       }
       if (msg.usage) {
-        totalInputTokens += msg.usage.input ?? 0;
-        totalOutputTokens += msg.usage.output ?? 0;
-        totalCacheReadTokens += msg.usage.cacheRead ?? 0;
+        const input = msg.usage.input ?? 0;
+        const output = msg.usage.output ?? 0;
+        const cacheRead = msg.usage.cacheRead ?? 0;
+        totalInputTokens += input;
+        totalOutputTokens += output;
+        totalCacheReadTokens += cacheRead;
         totalCost += msg.usage.cost?.total ?? 0;
+        // Preserve OpenClaw's reported total (which includes cached tokens) rather
+        // than recomputing it as input+output and undercounting.
+        totalTokens += msg.usage.totalTokens ?? input + cacheRead + output;
       }
 
       for (const block of content) {
@@ -216,7 +223,7 @@ export function convertOpenClawTranscript(
             timestamp,
             model: model ?? undefined,
             toolName,
-            input: mapToolInput(name, call.arguments),
+            input: mapToolInput(name, call.arguments, cwd),
           });
         }
       }
@@ -229,7 +236,7 @@ export function convertOpenClawTranscript(
       const idx = callId != null ? toolCallIndexById.get(callId) : undefined;
       if (idx !== undefined) {
         const call = rawMessages[idx];
-        call.output = mapToolOutput(call.toolName as string, text);
+        call.output = mapToolOutput(call.toolName as string, text, cwd);
         if (msg.isError) call.isError = true;
       } else {
         // Orphan result (no matching call in this transcript window): keep it visible.
@@ -238,7 +245,7 @@ export function convertOpenClawTranscript(
           type: "tool-call",
           timestamp,
           toolName: orphanName,
-          output: mapToolOutput(orphanName, text),
+          output: mapToolOutput(orphanName, text, cwd),
           isError: msg.isError ?? undefined,
         });
       }
@@ -263,7 +270,7 @@ export function convertOpenClawTranscript(
     cachedInputTokens: totalCacheReadTokens,
     outputTokens: totalOutputTokens,
     reasoningOutputTokens: 0,
-    totalTokens: totalInputTokens + totalOutputTokens,
+    totalTokens: totalTokens || totalInputTokens + totalOutputTokens,
   };
 
   const gitContext =
@@ -307,33 +314,44 @@ function normalizeToolName(name: string): string {
   return TOOL_NAME_MAP[lower] ?? name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-function mapToolInput(name: string, args: Record<string, unknown> | undefined): unknown {
+function mapToolInput(name: string, args: Record<string, unknown> | undefined, cwd: string | null): unknown {
   const a = args ?? {};
+  let mapped: unknown;
   switch (name.toLowerCase()) {
     case "read":
-      return { file_path: a.path ?? a.file_path };
+      mapped = { file_path: a.path ?? a.file_path };
+      break;
     case "write":
-      return { file_path: a.path ?? a.file_path, content: a.content };
+      mapped = { file_path: a.path ?? a.file_path, content: a.content };
+      break;
     case "bash":
-      return { command: a.command };
+      mapped = { command: a.command };
+      break;
     default:
-      return a;
+      mapped = a;
   }
+  // Relativize absolute paths against the session cwd, like the other converters,
+  // so uploaded transcripts don't leak absolute home-directory paths.
+  return cwd ? relativizePaths(mapped, cwd) : mapped;
 }
 
-function mapToolOutput(canonicalToolName: string, text: string): unknown {
+function mapToolOutput(canonicalToolName: string, text: string, cwd: string | null): unknown {
   if (!text) return text;
+  let result: unknown;
   switch (canonicalToolName) {
     case "Read": {
       const numLines = text.split("\n").length;
-      return { file: { content: text, numLines, totalLines: numLines } };
+      result = { file: { content: text, numLines, totalLines: numLines } };
+      break;
     }
     case "Bash":
-      return { stdout: text };
+      result = { stdout: text };
+      break;
     default:
       // Generic tools (Write, Browser, Process, Message, ...) render the raw text.
-      return text;
+      result = text;
   }
+  return cwd ? relativizePaths(result, cwd) : result;
 }
 
 function extractText(content: OpenClawInnerMessage["content"]): string {

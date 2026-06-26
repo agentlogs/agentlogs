@@ -51,6 +51,8 @@ describe("convertOpenClawTranscript", () => {
     expect(t.tokenUsage.cachedInputTokens).toBe(15); // 10 + 5
     expect(t.costUsd).toBeCloseTo(0.004, 6); // 0.003 + 0.001
     expect(t.blendedTokens).toBe(290);
+    // Preserves OpenClaw's reported total (a1 totalTokens 160) + derived for a2 (120+5+20).
+    expect(t.tokenUsage.totalTokens).toBe(305);
   });
 
   it("maps the compaction record to a compaction-summary message", () => {
@@ -73,12 +75,12 @@ describe("convertOpenClawTranscript", () => {
 
     expect(Object.keys(byName).sort()).toEqual(["Bash", "Browser", "Read", "Write"]);
 
-    // Read maps path -> file_path and shapes output as { file: { content, numLines } }.
-    expect(byName.Read.input).toEqual({ file_path: "/Users/dev/project/README.md" });
+    // Read maps path -> file_path (relativized against cwd) and shapes output as { file: { content, numLines } }.
+    expect(byName.Read.input).toEqual({ file_path: "./README.md" });
     expect(byName.Read.output).toMatchObject({ file: { content: "# Title\nbody line", numLines: 2 } });
 
-    // Write keeps file_path + content; Bash keeps command + stdout output.
-    expect(byName.Write.input).toEqual({ file_path: "/Users/dev/project/out.txt", content: "hello" });
+    // Write keeps relativized file_path + content; Bash keeps command + stdout output.
+    expect(byName.Write.input).toEqual({ file_path: "./out.txt", content: "hello" });
     expect(byName.Bash.output).toEqual({ stdout: "hi" });
 
     // Browser has no canonical mapping: name capitalized, raw text output, error flag preserved.
