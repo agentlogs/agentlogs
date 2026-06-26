@@ -10,7 +10,7 @@ import { homedir } from "os";
 import { convertClineTranscript, type ClineMessage, type ClineTaskMetadata, type UploadBlob } from "@agentlogs/shared";
 import { LiteLLMPricingFetcher } from "@agentlogs/shared/pricing";
 import { resolveGitContext } from "@agentlogs/shared/claudecode";
-import { uploadUnifiedToAllEnvs } from "../../lib/perform-upload";
+import { skipMessageLines, uploadUnifiedToAllEnvs } from "../../lib/perform-upload";
 
 const CLINE_TASKS_DIR = join(homedir(), ".cline", "data", "tasks");
 
@@ -232,7 +232,9 @@ export async function clineUploadCommand(taskIdOrPath?: string): Promise<void> {
 
   // Handle results
   if (uploadResult.skipped) {
-    console.log("Skipped: Repository not in allowlist");
+    for (const line of skipMessageLines(uploadResult.candidatesSeen)) {
+      console.log(line);
+    }
     process.exit(0);
   }
 

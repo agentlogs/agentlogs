@@ -5,7 +5,7 @@ import type { OpenCodeExport } from "@agentlogs/shared";
 import { convertOpenCodeTranscript } from "@agentlogs/shared/opencode";
 import { LiteLLMPricingFetcher } from "@agentlogs/shared/pricing";
 import { resolveGitContext } from "@agentlogs/shared/claudecode";
-import { uploadUnifiedToAllEnvs } from "../../lib/perform-upload";
+import { skipMessageLines, uploadUnifiedToAllEnvs } from "../../lib/perform-upload";
 
 interface SessionReadResult {
   success: boolean;
@@ -148,7 +148,9 @@ export async function opencodeUploadCommand(sessionId: string): Promise<void> {
 
   // Exit if skipped due to allowlist
   if (uploadResult.skipped) {
-    console.log("Skipped: Repository not in allowlist");
+    for (const line of skipMessageLines(uploadResult.candidatesSeen)) {
+      console.log(line);
+    }
     process.exit(0);
   }
 

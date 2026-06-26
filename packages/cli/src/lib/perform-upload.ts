@@ -12,7 +12,8 @@ import { uploadTranscript } from "@agentlogs/shared/upload";
 import type { UploadOptions } from "@agentlogs/shared/upload";
 import { getAuthenticatedEnvironments, type EnvName } from "../config";
 import { cacheTranscriptId, getOrCreateTranscriptId } from "../local-store";
-import { getRepoIdFromCwd, getRepoVisibility, isRepoAllowed } from "../settings";
+import { getRepoVisibility } from "../settings";
+import { type CwdCandidate, resolveUploadTarget } from "./repo-resolution";
 
 export interface PerformUploadParams {
   transcriptPath: string;
@@ -37,6 +38,8 @@ export interface PerformUploadResult {
   source: TranscriptSource;
   /** True if upload was skipped due to allowlist */
   skipped: boolean;
+  /** Distinct repo ids seen across the session's directories (populated on skip). */
+  candidatesSeen?: string[];
 }
 
 export function prepareUnifiedTranscriptForUpload(transcript: UnifiedTranscript): UnifiedTranscript {
@@ -46,6 +49,40 @@ export function prepareUnifiedTranscriptForUpload(transcript: UnifiedTranscript)
   });
   const fileRedactedTranscript = redactSensitiveFilesInTranscript(linkRewrittenTranscript);
   return redactSecretsDeep(fileRedactedTranscript);
+}
+
+/**
+ * Stamp the resolved repo id onto the transcript's embedded git context so the
+ * server attributes the upload to the selected (allowlisted) repo. Without this,
+ * a fork session keeps the origin-only repo derived during conversion, mis-
+ * attributing the upload to the personal fork instead of the canonical repo that
+ * passed the allowlist. Runs before link-rewriting/redaction so those use the
+ * selected repo too. No-op when there is no git context or the repo already matches.
+ */
+export function stampResolvedRepoId(transcript: UnifiedTranscript, repoId: string | null): UnifiedTranscript {
+  if (!repoId || !transcript.git || transcript.git.repo === repoId) {
+    return transcript;
+  }
+  return { ...transcript, git: { ...transcript.git, repo: repoId } };
+}
+
+/**
+ * Shared user-facing message lines for an allowlist-skipped upload, so every
+ * command (claude-code, opencode, cline, pi) reports the same explanation.
+ */
+export function skipMessageLines(candidatesSeen: string[] | undefined): string[] {
+  const seen = candidatesSeen ?? [];
+  if (seen.length > 0) {
+    return [
+      "Upload skipped: none of the repos this session worked in are allowlisted.",
+      `Repos seen: ${seen.join(", ")}`,
+      "Run `agentlogs allow` in the target clone to enable uploads for it.",
+    ];
+  }
+  return [
+    "Upload skipped: no allowlisted git repository was found among this session's directories.",
+    "Run `agentlogs allow` in the target clone to enable uploads for it.",
+  ];
 }
 
 /**
@@ -74,6 +111,21 @@ export interface UploadUnifiedResult {
   allSuccess: boolean;
   /** True if upload was skipped due to allowlist */
   skipped: boolean;
+  /** Distinct repo ids seen across the session's directories (populated on skip). */
+  candidatesSeen?: string[];
+}
+
+/**
+ * Build the weighted cwd candidate list for repo resolution. When an explicit
+ * cwd override is supplied, only that directory is considered.
+ */
+function cwdCandidatesForParams(params: PerformUploadParams, parsed: ParsedTranscriptFile): CwdCandidate[] {
+  const override = params.cwdOverride?.trim();
+  if (override) {
+    return [{ cwd: override, weight: 1 }];
+  }
+  const candidates = extractCwdCandidatesFromRecords(parsed.records);
+  return candidates.length > 0 ? candidates : [{ cwd: parsed.cwd, weight: 1 }];
 }
 
 /**
@@ -87,12 +139,13 @@ export async function performUpload(
   params: PerformUploadParams,
   options: UploadOptions = {},
 ): Promise<PerformUploadResult> {
-  // Parse file first (cheap) to get cwd for allowlist check
+  // Parse file first (cheap) to get cwd candidates for allowlist check
   const parsed = parseTranscriptFile(params);
 
-  // Check if repo is allowed before expensive conversion
-  const repoId = await getRepoIdFromCwd(parsed.cwd);
-  if (!isRepoAllowed(repoId)) {
+  // Resolve the best allowlisted repo across all of the session's directories
+  // (and all their remotes) before expensive conversion.
+  const target = await resolveUploadTarget(cwdCandidatesForParams(params, parsed), parsed.cwd);
+  if (!target.allowed) {
     return {
       success: false,
       eventCount: parsed.records.length,
@@ -103,13 +156,21 @@ export async function performUpload(
       sha256: "",
       source: params.source ?? "claude-code",
       skipped: true,
+      candidatesSeen: target.candidatesSeen,
     };
   }
+
+  // Attribute conversion + git context to the resolved repo's working directory.
+  parsed.cwd = target.cwd;
+  const repoId = target.repoId;
 
   // Now do expensive conversion (pass pre-parsed data)
   const converted = await convertTranscriptFile(params, parsed);
 
-  const preparedTranscript = prepareUnifiedTranscriptForUpload(converted.unifiedTranscript);
+  // Attribute the transcript to the resolved repo (not the origin-only repo from conversion).
+  const preparedTranscript = prepareUnifiedTranscriptForUpload(
+    stampResolvedRepoId(converted.unifiedTranscript, repoId),
+  );
 
   // Compute sha256 from prepared unified transcript
   const unifiedJson = JSON.stringify(preparedTranscript);
@@ -212,6 +273,25 @@ function extractCwdFromRecords(records: Record<string, unknown>[]): string | nul
   return null;
 }
 
+/**
+ * Collect every distinct cwd referenced by the transcript, weighted by how many
+ * records mention it. Ordered by descending weight, ties broken by first
+ * appearance. Used to attribute a session to the repo it actually worked in,
+ * rather than the first (often a home/orchestration) directory.
+ */
+export function extractCwdCandidatesFromRecords(records: Record<string, unknown>[]): CwdCandidate[] {
+  const counts = new Map<string, number>();
+  for (const record of records) {
+    const cwd = typeof record.cwd === "string" ? record.cwd.trim() : "";
+    if (cwd) {
+      counts.set(cwd, (counts.get(cwd) ?? 0) + 1);
+    }
+  }
+  // Map preserves insertion (first-appearance) order; a stable sort by descending
+  // weight therefore keeps first appearance as the tie-break.
+  return [...counts.entries()].map(([cwd, weight]) => ({ cwd, weight })).sort((a, b) => b.weight - a.weight);
+}
+
 function extractGitBranchFromRecords(records: Record<string, unknown>[]): string | undefined {
   for (const record of records) {
     const gitBranch = typeof record.gitBranch === "string" ? record.gitBranch.trim() : "";
@@ -240,6 +320,8 @@ export interface MultiEnvUploadResult {
   sessionId: string;
   anySuccess: boolean;
   allSuccess: boolean;
+  /** Distinct repo ids seen across the session's directories (populated on skip). */
+  candidatesSeen?: string[];
 }
 
 interface ParsedTranscriptFile {
@@ -370,12 +452,13 @@ export async function convertTranscriptFile(
  * Checks allowlist first, then converts and uploads.
  */
 export async function performUploadToAllEnvs(params: PerformUploadParams): Promise<MultiEnvUploadResult> {
-  // Parse file first (cheap) to get cwd for allowlist check
+  // Parse file first (cheap) to get cwd candidates for allowlist check
   const parsed = parseTranscriptFile(params);
 
-  // Check allowlist before expensive conversion
-  const repoId = await getRepoIdFromCwd(parsed.cwd);
-  if (!isRepoAllowed(repoId)) {
+  // Resolve the best allowlisted repo across all of the session's directories
+  // (and all their remotes) before expensive conversion.
+  const target = await resolveUploadTarget(cwdCandidatesForParams(params, parsed), parsed.cwd);
+  if (!target.allowed) {
     return {
       results: [],
       eventCount: parsed.records.length,
@@ -383,8 +466,12 @@ export async function performUploadToAllEnvs(params: PerformUploadParams): Promi
       sessionId: "",
       anySuccess: false,
       allSuccess: false,
+      candidatesSeen: target.candidatesSeen,
     };
   }
+
+  // Attribute conversion + git context to the resolved repo's working directory.
+  parsed.cwd = target.cwd;
 
   // Now do expensive conversion (pass pre-parsed data to avoid double-parsing)
   const converted = await convertTranscriptFile(params, parsed);
@@ -407,6 +494,7 @@ export async function performUploadToAllEnvs(params: PerformUploadParams): Promi
       sessionId: converted.sessionId,
       anySuccess: false,
       allSuccess: false,
+      candidatesSeen: result.candidatesSeen,
     };
   }
 
@@ -434,9 +522,10 @@ export async function performUploadToAllEnvs(params: PerformUploadParams): Promi
 export async function uploadUnifiedToAllEnvs(params: UploadUnifiedParams): Promise<UploadUnifiedResult> {
   const { unifiedTranscript, sessionId, cwd, blobs, visibility: visibilityOverride } = params;
 
-  // Check if repo is allowed for capture
-  const repoId = await getRepoIdFromCwd(cwd);
-  if (!isRepoAllowed(repoId)) {
+  // Check if repo is allowed for capture. Considers every remote of the cwd
+  // (not just origin), so fork-based workflows resolve to the canonical repo.
+  const target = await resolveUploadTarget([{ cwd, weight: 1 }], cwd);
+  if (!target.allowed) {
     return {
       results: [],
       id: "",
@@ -444,15 +533,18 @@ export async function uploadUnifiedToAllEnvs(params: UploadUnifiedParams): Promi
       anySuccess: false,
       allSuccess: false,
       skipped: true,
+      candidatesSeen: target.candidatesSeen,
     };
   }
+  const repoId = target.repoId;
 
   const authenticatedEnvs = await getAuthenticatedEnvironments();
   if (authenticatedEnvs.length === 0) {
     throw new Error("No authenticated environments found. Run `agentlogs login agentlogs.ai` first.");
   }
 
-  const preparedTranscript = prepareUnifiedTranscriptForUpload(unifiedTranscript);
+  // Attribute the transcript to the resolved repo (handles fork origin -> upstream).
+  const preparedTranscript = prepareUnifiedTranscriptForUpload(stampResolvedRepoId(unifiedTranscript, repoId));
 
   // Compute sha256 from prepared unified transcript
   const unifiedJson = JSON.stringify(preparedTranscript);
