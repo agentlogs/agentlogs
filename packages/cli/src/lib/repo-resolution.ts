@@ -115,10 +115,14 @@ export function selectBestAllowedRepo(
  *   allowlist skips), exactly as `isRepoAllowed(null)` decides today.
  * - Repos found but all explicitly denied / not allowlisted -> skip.
  *
- * Deny wins in denylist mode: if the session touched ANY explicitly denied repo,
- * the upload is skipped even if it also touched an allowed repo. A transcript
- * carries every record's content regardless of which repo it is attributed to,
- * so a denied repo's content must never ride along under an allowed attribution.
+ * Both modes guard against leaking a non-captured repo's content, because a
+ * transcript carries every record regardless of which repo it is attributed to:
+ * - Deny wins (denylist): the session touched ANY explicitly denied repo -> skip.
+ * - Allowlist: EVERY touched git root must have an allowed repo -> otherwise skip,
+ *   so a session that also worked in a non-allowlisted repo doesn't ride along.
+ *
+ * Attribution is by dominant git ROOT (cwd weights aggregated per root, so a repo
+ * spread across several subdirectories isn't out-ranked by a single hotter dir).
  */
 export async function resolveUploadTarget(
   cwdCandidates: CwdCandidate[],
@@ -131,18 +135,54 @@ export async function resolveUploadTarget(
   const candidates = await buildRepoCandidates(cwdCandidates, resolveCwd);
   const candidatesSeen = [...new Set(candidates.map((candidate) => candidate.repoId))];
 
-  // Deny wins: in denylist mode, an explicitly denied repo among the candidates
-  // (isAllowed === false while unknown repos are allowed) forces a skip.
+  // Group candidates by git root. Weight is summed over DISTINCT cwds under the
+  // root (not per remote). allowedRepo is the first allowed repo in priority order
+  // (cwds by descending weight, origin-first within a cwd).
+  interface RootGroup {
+    weight: number;
+    order: number;
+    cwdsSeen: Set<string>;
+    firstRepo: RepoCandidate;
+    allowedRepo: RepoCandidate | null;
+  }
+  const rootGroups = new Map<string, RootGroup>();
+  let order = 0;
+  for (const candidate of candidates) {
+    let group = rootGroups.get(candidate.gitRoot);
+    if (!group) {
+      group = { weight: 0, order: order++, cwdsSeen: new Set(), firstRepo: candidate, allowedRepo: null };
+      rootGroups.set(candidate.gitRoot, group);
+    }
+    if (!group.cwdsSeen.has(candidate.cwd)) {
+      group.cwdsSeen.add(candidate.cwd);
+      group.weight += candidate.weight;
+    }
+    if (!group.allowedRepo && isAllowed(candidate.repoId)) {
+      group.allowedRepo = candidate;
+    }
+  }
+  const groups = [...rootGroups.values()];
+
+  // Deny wins: in denylist mode, an explicitly denied repo forces a skip.
   const denylistMode = isAllowed(null);
   if (denylistMode) {
     const denied = candidates.find((candidate) => !isAllowed(candidate.repoId));
     if (denied) {
       return { repoId: denied.repoId, cwd: denied.cwd, allowed: false, candidatesSeen };
     }
+  } else {
+    // Allowlist: every touched git root must resolve to an allowed repo.
+    const unlisted = groups.find((group) => !group.allowedRepo);
+    if (unlisted) {
+      return { repoId: unlisted.firstRepo.repoId, cwd: unlisted.firstRepo.cwd, allowed: false, candidatesSeen };
+    }
   }
 
-  const best = selectBestAllowedRepo(candidates, (repoId) => isAllowed(repoId));
-  if (best) {
+  // Pick the dominant allowed root (most aggregated weight; ties -> first seen).
+  const allowedGroups = groups.filter((group) => group.allowedRepo);
+  if (allowedGroups.length > 0) {
+    allowedGroups.sort((a, b) => b.weight - a.weight || a.order - b.order);
+    const best = allowedGroups[0].allowedRepo as RepoCandidate;
     return { repoId: best.repoId, cwd: best.cwd, allowed: true, candidatesSeen };
   }
 
@@ -151,7 +191,7 @@ export async function resolveUploadTarget(
     return { repoId: null, cwd: defaultCwd, allowed: isAllowed(null), candidatesSeen };
   }
 
-  // Repos were found but none are allowed (explicitly denied, or not allowlisted).
+  // Repos were found but none are allowed.
   const dominant = candidates[0];
   return { repoId: dominant.repoId, cwd: dominant.cwd, allowed: false, candidatesSeen };
 }

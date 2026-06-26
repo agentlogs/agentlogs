@@ -153,6 +153,46 @@ describe("resolveUploadTarget", () => {
     expect(target.candidatesSeen).toEqual(["github.com/you/repo-fork"]);
   });
 
+  it("allowlist: a non-allowlisted repo touched alongside an allowed one forces a skip", async () => {
+    const PRIVATE = "/Users/me/Projects/private";
+    const resolve = stubResolve({
+      [CLONE]: { gitRoot: CLONE, repos: [{ repoId: "github.com/acme/repo", remote: "origin" }] },
+      [PRIVATE]: { gitRoot: PRIVATE, repos: [{ repoId: "github.com/me/private", remote: "origin" }] },
+    });
+    const target = await resolveUploadTarget(
+      [
+        { cwd: CLONE, weight: 400 },
+        { cwd: PRIVATE, weight: 5 },
+      ],
+      CLONE,
+      { resolveCwd: resolve, isAllowed: allowlist("github.com/acme/repo") },
+    );
+    expect(target.allowed).toBe(false);
+    expect(target.candidatesSeen).toContain("github.com/me/private");
+  });
+
+  it("aggregates cwd weights by git root, not by hottest single directory", async () => {
+    const SRC = "/Users/me/Projects/repo/src";
+    const TESTS = "/Users/me/Projects/repo/tests";
+    const OTHER2 = "/Users/me/Projects/other";
+    const resolve = stubResolve({
+      [SRC]: { gitRoot: "/Users/me/Projects/repo", repos: [{ repoId: "github.com/acme/repo", remote: "origin" }] },
+      [TESTS]: { gitRoot: "/Users/me/Projects/repo", repos: [{ repoId: "github.com/acme/repo", remote: "origin" }] },
+      [OTHER2]: { gitRoot: OTHER2, repos: [{ repoId: "github.com/acme/other", remote: "origin" }] },
+    });
+    const target = await resolveUploadTarget(
+      [
+        { cwd: OTHER2, weight: 3 },
+        { cwd: SRC, weight: 2 },
+        { cwd: TESTS, weight: 2 },
+      ],
+      OTHER2,
+      { resolveCwd: resolve, isAllowed: allowlist("github.com/acme/repo", "github.com/acme/other") },
+    );
+    // repo (2 + 2 = 4) outranks other (3) despite other being the hottest single dir.
+    expect(target.repoId).toBe("github.com/acme/repo");
+  });
+
   it("dominant tie-break: higher-weight allowed cwd wins", async () => {
     const OTHER = "/Users/me/Projects/other";
     const resolve = stubResolve({
