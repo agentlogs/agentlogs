@@ -1,5 +1,16 @@
 import { createFileRoute, useRouter, useRouterState } from "@tanstack/react-router";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -138,43 +149,41 @@ function TeamDashboardPage() {
   const navigate = Route.useNavigate();
   // Dim the page while the loader refetches (e.g. a period change).
   const isLoading = useRouterState({ select: (s) => s.isLoading });
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isLeaving, setIsLeaving] = useState(false);
+  const [teamAction, setTeamAction] = useState<"delete" | "leave" | null>(null);
+  const [isTeamActionPending, setIsTeamActionPending] = useState(false);
+  const [teamActionError, setTeamActionError] = useState<string | null>(null);
 
   const { team, stats, memberStats, activity, userNames, isHourly, modelUsage, agentUsage, session } = data;
 
-  // Re-run the loader to refresh after a mutation.
-  const refresh = () => router.invalidate();
+  // Keep mutations pending until the refreshed loader data is ready.
+  const refresh = () => router.invalidate({ sync: true });
 
   // Period lives in the URL; navigating re-runs the loader.
   const handlePeriodChange = (newDays: string) => {
     navigate({ search: { days: Number(newDays) as PeriodDays }, replace: true });
   };
 
-  const handleDeleteTeam = async () => {
-    if (!team || !confirm("Are you sure you want to delete this team? All members will be removed.")) return;
-    setIsDeleting(true);
+  const handleTeamAction = async () => {
+    if (!team || !teamAction) return;
+    setIsTeamActionPending(true);
+    setTeamActionError(null);
     try {
-      await deleteTeam({ data: team.id });
-      router.invalidate();
+      if (teamAction === "delete") {
+        await deleteTeam({ data: team.id });
+      } else {
+        await leaveTeam({ data: team.id });
+      }
+      await refresh();
+      setTeamAction(null);
+    } catch (err) {
+      setTeamActionError(err instanceof Error ? err.message : `Failed to ${teamAction} team`);
     } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const handleLeaveTeam = async () => {
-    if (!team || !confirm("Are you sure you want to leave this team?")) return;
-    setIsLeaving(true);
-    try {
-      await leaveTeam({ data: team.id });
-      router.invalidate();
-    } finally {
-      setIsLeaving(false);
+      setIsTeamActionPending(false);
     }
   };
 
   if (!team) {
-    return <NoTeamView onSuccess={() => router.invalidate()} />;
+    return <NoTeamView onSuccess={refresh} />;
   }
 
   const isOwner = session?.user?.id === team.ownerId;
@@ -209,6 +218,43 @@ function TeamDashboardPage() {
 
   return (
     <div className={`space-y-8 ${isLoading ? "opacity-60" : ""}`}>
+      <AlertDialog
+        open={teamAction !== null}
+        onOpenChange={(open) => {
+          if (!open && !isTeamActionPending) {
+            setTeamAction(null);
+            setTeamActionError(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{teamAction === "delete" ? "Delete team?" : "Leave team?"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {teamAction === "delete"
+                ? `This will permanently delete ${team.name} and remove all its members.`
+                : `You will lose access to ${team.name}'s shared transcripts and dashboard.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {teamActionError && (
+            <p role="alert" className="text-sm text-destructive">
+              {teamActionError}
+            </p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isTeamActionPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleTeamAction} disabled={isTeamActionPending}>
+              {isTeamActionPending
+                ? teamAction === "delete"
+                  ? "Deleting..."
+                  : "Leaving..."
+                : teamAction === "delete"
+                  ? "Delete team"
+                  : "Leave team"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -232,24 +278,24 @@ function TeamDashboardPage() {
           </Select>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Team actions">
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {isOwner ? (
                 <DropdownMenuItem
-                  onClick={handleDeleteTeam}
-                  disabled={isDeleting}
+                  onClick={() => setTeamAction("delete")}
+                  disabled={isTeamActionPending}
                   className="whitespace-nowrap text-destructive focus:text-destructive"
                 >
                   <Trash2 className="h-4 w-4" />
-                  {isDeleting ? "Deleting..." : "Delete Team"}
+                  Delete Team
                 </DropdownMenuItem>
               ) : (
-                <DropdownMenuItem onClick={handleLeaveTeam} disabled={isLeaving}>
+                <DropdownMenuItem onClick={() => setTeamAction("leave")} disabled={isTeamActionPending}>
                   <UserMinus className="h-4 w-4" />
-                  {isLeaving ? "Leaving..." : "Leave Team"}
+                  Leave Team
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -529,35 +575,67 @@ function RemoveMemberButton({
   teamId: string;
   userId: string;
   userName: string;
-  onRemoved: () => void;
+  onRemoved: () => Promise<void>;
 }) {
   const [isRemoving, setIsRemoving] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleRemove = async () => {
-    if (!confirm(`Remove ${userName} from the team?`)) return;
     setIsRemoving(true);
+    setError(null);
     try {
       await removeMember({ data: { teamId, targetUserId: userId } });
-      onRemoved();
+      await onRemoved();
+      setIsOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove member");
     } finally {
       setIsRemoving(false);
     }
   };
 
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="h-7 text-xs text-muted-foreground hover:text-destructive"
-      onClick={handleRemove}
-      disabled={isRemoving}
+    <AlertDialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!isRemoving) {
+          setIsOpen(open);
+          setError(null);
+        }
+      }}
     >
-      {isRemoving ? "..." : "Remove"}
-    </Button>
+      <AlertDialogTrigger
+        render={
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-destructive" />
+        }
+      >
+        Remove
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Remove member?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {userName || "This member"} will lose access to the team's shared transcripts and dashboard.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isRemoving}>Cancel</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={handleRemove} disabled={isRemoving}>
+            {isRemoving ? "Removing..." : "Remove member"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
-function AddMemberPopover({ teamId, onSuccess }: { teamId: string; onSuccess: () => void }) {
+function AddMemberPopover({ teamId, onSuccess }: { teamId: string; onSuccess: () => Promise<void> }) {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"email" | "link">("email");
   const [email, setEmail] = useState("");
@@ -574,8 +652,8 @@ function AddMemberPopover({ teamId, onSuccess }: { teamId: string; onSuccess: ()
     setEmailError(null);
     try {
       await addMemberByEmail({ data: { teamId, email } });
+      await onSuccess();
       setEmail("");
-      onSuccess();
       setIsOpen(false);
     } catch (err) {
       setEmailError(err instanceof Error ? err.message : "Failed to add member");
@@ -686,7 +764,7 @@ function AddMemberPopover({ teamId, onSuccess }: { teamId: string; onSuccess: ()
   );
 }
 
-function NoTeamView({ onSuccess }: { onSuccess: () => void }) {
+function NoTeamView({ onSuccess }: { onSuccess: () => Promise<void> }) {
   const [teamName, setTeamName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -698,7 +776,7 @@ function NoTeamView({ onSuccess }: { onSuccess: () => void }) {
     setError(null);
     try {
       await createTeam({ data: { name: teamName } });
-      onSuccess();
+      await onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create team");
     } finally {
