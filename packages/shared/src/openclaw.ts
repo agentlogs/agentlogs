@@ -37,12 +37,13 @@ export type OpenClawUsage = {
   cacheRead?: number;
   cacheWrite?: number;
   totalTokens?: number;
+  reasoningTokens?: number;
   cost?: { total?: number };
 };
 
 export type OpenClawInnerMessage = {
   role: "user" | "assistant" | "toolResult";
-  content?: Array<OpenClawContentBlock | { type: string; text?: string }>;
+  content?: string | Array<OpenClawContentBlock | { type: string; text?: string }>;
   model?: string;
   provider?: string;
   api?: string;
@@ -77,6 +78,8 @@ export type OpenClawRecord =
 
 export type ConvertOpenClawOptions = {
   now?: Date;
+  sessionId?: string;
+  onWarning?: (message: string) => void;
   gitContext?: UnifiedGitContext | null;
   cwd?: string | null;
   pricing?: Record<string, LiteLLMModelPricing>;
@@ -90,6 +93,7 @@ const TOOL_NAME_MAP: Record<string, string> = {
   read: "Read",
   write: "Write",
   bash: "Bash",
+  exec: "Bash",
   edit: "Edit",
   glob: "Glob",
   grep: "Grep",
@@ -103,303 +107,284 @@ const TOOL_NAME_MAP: Record<string, string> = {
  * Parse OpenClaw JSONL content into records, skipping malformed lines so a single
  * truncated/garbled line (common in live-written session backups) doesn't abort.
  */
-export function parseOpenClawRecords(content: string): OpenClawRecord[] {
+export function parseOpenClawRecords(content: string, onWarning?: (message: string) => void): OpenClawRecord[] {
   const records: OpenClawRecord[] = [];
+  let skipped = 0;
   for (const line of content.split(/\r?\n/)) {
     if (!line.trim()) continue;
     try {
-      records.push(JSON.parse(line) as OpenClawRecord);
+      const value: unknown = JSON.parse(line);
+      if (asRecord(value)) records.push(value as OpenClawRecord);
+      else skipped++;
     } catch {
-      // Skip malformed line.
+      skipped++;
     }
   }
+  if (skipped) onWarning?.(`Skipped ${skipped} malformed OpenClaw JSONL record(s).`);
   return records;
 }
 
+export function asOpenClawSession(records: unknown[]): OpenClawSessionRecord | null {
+  const header = records.map(asRecord).find((r) => r?.type === "session");
+  const id = asString(header?.id);
+  if (!header || !id) return null;
+  return {
+    type: "session",
+    id,
+    cwd: asString(header.cwd),
+    timestamp: asString(header.timestamp),
+    version: typeof header.version === "number" && Number.isFinite(header.version) ? header.version : undefined,
+  };
+}
+
 export function convertOpenClawTranscript(
-  records: OpenClawRecord[],
+  records: unknown[],
   options: ConvertOpenClawOptions = {},
 ): UnifiedTranscript | null {
-  const isRecord = (r: OpenClawRecord): r is OpenClawRecord => !!r && typeof r === "object";
-  const session = records.find((r): r is OpenClawSessionRecord => isRecord(r) && r.type === "session") ?? null;
-  const hasMessages = records.some((r) => isRecord(r) && r.type === "message");
-  if (!session && !hasMessages) {
-    return null;
-  }
-
+  const session = asOpenClawSession(records);
   const cwd = options.cwd ?? session?.cwd ?? null;
-
-  // Build messages as plain objects so a later toolResult can attach its output
-  // to the originating tool-call before final schema validation.
   const rawMessages: Record<string, unknown>[] = [];
-  const toolCallIndexById = new Map<string, number>();
+  const toolCallIndexes = new Map<string, number[]>();
   const userTexts: string[] = [];
-
+  const modelUsage = new Map<string, UnifiedTokenUsage>();
+  const tokenUsage = emptyUsage();
   let primaryModel: string | null = null;
   let totalCost = 0;
-  let totalInputTokens = 0;
-  let totalOutputTokens = 0;
-  let totalCacheReadTokens = 0;
-  let totalTokens = 0;
+  let skipped = 0;
 
-  for (const record of records) {
-    if (!record || typeof record !== "object") continue;
+  for (const value of records) {
+    const record = asRecord(value);
+    if (!record) {
+      skipped++;
+      continue;
+    }
+    const timestamp = parseTimestamp(asString(record.timestamp))?.toISOString();
+    const id = asString(record.id);
     if (record.type === "compaction") {
-      const summary = (record as OpenClawCompactionRecord).summary?.trim();
-      if (summary) {
-        rawMessages.push({
-          type: "compaction-summary",
-          text: summary,
-          id: (record as OpenClawCompactionRecord).id,
-          timestamp: (record as OpenClawCompactionRecord).timestamp,
-        });
-      }
+      const summary = asString(record.summary)?.trim();
+      if (summary) rawMessages.push({ type: "compaction-summary", text: summary, id, timestamp });
+      else if (record.summary != null) skipped++;
       continue;
     }
-
-    if (record.type !== "message") {
+    if (record.type !== "message") continue;
+    const msg = asRecord(record.message);
+    if (!msg) {
+      skipped++;
       continue;
     }
-
-    const msg = (record as OpenClawMessageRecord).message;
-    if (!msg || typeof msg !== "object") continue;
-    const timestamp = (record as OpenClawMessageRecord).timestamp;
-    const recordId = (record as OpenClawMessageRecord).id;
-    // Tolerate malformed records: content may be missing or not an array.
-    const content = Array.isArray(msg.content) ? msg.content : [];
+    const content = typeof msg.content === "string" ? [{ type: "text", text: msg.content }] : msg.content;
+    const blocks = Array.isArray(content) ? content : [];
+    if (content != null && !Array.isArray(content)) skipped++;
 
     if (msg.role === "user") {
-      for (const block of content) {
-        if (!block || typeof block !== "object") continue;
-        if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
-          const text = block.text.trim();
-          userTexts.push(text);
-          rawMessages.push({ type: "user", text, id: recordId, timestamp });
+      // Keep one message/identity per native user entry, including mixed block arrays.
+      const text = extractText(content);
+      if (text) {
+        userTexts.push(text);
+        rawMessages.push({ type: "user", text, id, timestamp });
+      }
+      skipped += blocks.filter(
+        (b) => !asRecord(b) || (asRecord(b)?.type === "text" && typeof asRecord(b)?.text !== "string"),
+      ).length;
+    } else if (msg.role === "assistant") {
+      const model = asString(msg.model);
+      primaryModel ??= model ?? null;
+      const usage = asRecord(msg.usage);
+      if (usage) {
+        const input = tokenNumber(usage.input);
+        const output = tokenNumber(usage.output);
+        const cacheRead = tokenNumber(usage.cacheRead);
+        const cacheWrite = tokenNumber(usage.cacheWrite);
+        const total =
+          typeof usage.totalTokens === "number" && Number.isFinite(usage.totalTokens) && usage.totalTokens >= 0
+            ? usage.totalTokens
+            : input + output + cacheRead + cacheWrite;
+        const delta = {
+          inputTokens: input,
+          outputTokens: output,
+          cachedInputTokens: cacheRead,
+          reasoningOutputTokens: tokenNumber(usage.reasoningTokens),
+          totalTokens: total,
+        };
+        addUsage(tokenUsage, delta);
+        if (model) {
+          const aggregate = modelUsage.get(model) ?? emptyUsage();
+          addUsage(aggregate, delta);
+          modelUsage.set(model, aggregate);
         }
+        totalCost += tokenNumber(asRecord(usage.cost)?.total);
       }
-      continue;
-    }
-
-    if (msg.role === "assistant") {
-      const model = msg.model ?? null;
-      if (model && !primaryModel) {
-        primaryModel = model;
-      }
-      if (msg.usage) {
-        const input = msg.usage.input ?? 0;
-        const output = msg.usage.output ?? 0;
-        const cacheRead = msg.usage.cacheRead ?? 0;
-        totalInputTokens += input;
-        totalOutputTokens += output;
-        totalCacheReadTokens += cacheRead;
-        totalCost += msg.usage.cost?.total ?? 0;
-        // Preserve OpenClaw's reported total (which includes cached tokens) rather
-        // than recomputing it as input+output and undercounting.
-        totalTokens += msg.usage.totalTokens ?? input + cacheRead + output;
-      }
-
-      for (const block of content) {
-        if (!block || typeof block !== "object") continue;
-        if (block.type === "thinking") {
-          const text = (block as { thinking?: string }).thinking?.trim();
-          if (text) {
-            rawMessages.push({ type: "thinking", text, timestamp, model: model ?? undefined });
-          }
-        } else if (block.type === "text") {
-          const text = block.text?.trim();
-          if (text) {
-            rawMessages.push({ type: "agent", text, id: recordId, timestamp, model: model ?? undefined });
-          }
+      for (const value of blocks) {
+        const block = asRecord(value);
+        if (!block) {
+          skipped++;
+          continue;
+        }
+        if (block.type === "text" || block.type === "thinking") {
+          const text = asString(block.type === "text" ? block.text : block.thinking)?.trim();
+          if (text)
+            rawMessages.push({ type: block.type === "text" ? "agent" : "thinking", text, id, timestamp, model });
+          else if (typeof (block.type === "text" ? block.text : block.thinking) !== "string") skipped++;
         } else if (block.type === "toolCall") {
-          const call = block as { id?: string; name?: string; arguments?: Record<string, unknown> };
-          const name = typeof call.name === "string" ? call.name : "tool";
-          const toolName = normalizeToolName(name);
-          if (typeof call.id === "string") {
-            toolCallIndexById.set(call.id, rawMessages.length);
+          const name = asString(block.name) ?? "tool";
+          const callId = asString(block.id);
+          const calls = mapToolCalls(name, block.arguments ?? block.input, cwd);
+          const indexes: number[] = [];
+          for (const [index, call] of calls.entries()) {
+            indexes.push(rawMessages.length);
+            rawMessages.push({
+              type: "tool-call",
+              id: callId && calls.length > 1 ? `${callId}:${index}` : callId,
+              timestamp,
+              model,
+              ...call,
+            });
           }
-          rawMessages.push({
-            type: "tool-call",
-            id: call.id,
-            timestamp,
-            model: model ?? undefined,
-            toolName,
-            input: mapToolInput(name, call.arguments, cwd),
-          });
+          if (callId) toolCallIndexes.set(callId, indexes);
         }
       }
-      continue;
-    }
-
-    if (msg.role === "toolResult") {
-      const text = extractText(msg.content);
-      const callId = msg.toolCallId;
-      const idx = callId != null ? toolCallIndexById.get(callId) : undefined;
-      if (idx !== undefined) {
-        const call = rawMessages[idx];
-        call.output = mapToolOutput(call.toolName as string, text, cwd);
-        if (msg.isError) call.isError = true;
+    } else if (msg.role === "toolResult") {
+      const text = extractText(content);
+      const callId = asString(msg.toolCallId);
+      const indexes = callId ? toolCallIndexes.get(callId) : undefined;
+      const isError = typeof msg.isError === "boolean" ? msg.isError : undefined;
+      if (indexes) {
+        for (const index of indexes) {
+          const call = rawMessages[index];
+          call.output = mapToolOutput(call.toolName as string, text, cwd);
+          if (isError) call.isError = true;
+        }
       } else {
-        // Orphan result (no matching call in this transcript window): keep it visible.
-        const orphanName = typeof msg.toolName === "string" ? normalizeToolName(msg.toolName) : "Tool";
+        const toolName = normalizeToolName(asString(msg.toolName) ?? "Tool");
         rawMessages.push({
           type: "tool-call",
+          id,
           timestamp,
-          toolName: orphanName,
-          output: mapToolOutput(orphanName, text, cwd),
-          isError: msg.isError ?? undefined,
+          toolName,
+          output: mapToolOutput(toolName, text, cwd),
+          isError,
         });
       }
     }
   }
 
-  // Validate each message independently so one malformed entry (e.g. a future
-  // OpenClaw record shape) is skipped rather than aborting the whole transcript.
-  const unifiedMessages: UnifiedTranscriptMessage[] = [];
+  const messages: UnifiedTranscriptMessage[] = [];
   for (const raw of rawMessages) {
     const parsed = unifiedTranscriptMessageSchema.safeParse(raw);
-    if (parsed.success) {
-      unifiedMessages.push(parsed.data);
-    }
+    if (parsed.success) messages.push(parsed.data);
+    else skipped++;
   }
-  if (unifiedMessages.length === 0) {
-    return null;
-  }
-
-  const tokenUsage: UnifiedTokenUsage = {
-    inputTokens: totalInputTokens,
-    cachedInputTokens: totalCacheReadTokens,
-    outputTokens: totalOutputTokens,
-    reasoningOutputTokens: 0,
-    totalTokens: totalTokens || totalInputTokens + totalOutputTokens,
-  };
-
-  const gitContext =
-    options.gitContext !== undefined
-      ? options.gitContext
-      : unifiedGitContextSchema.parse({ repo: null, branch: null, relativeCwd: null });
-
-  const stats = calculateTranscriptStats(unifiedMessages);
-  // Resolve a valid Date; a garbage/missing timestamp must not throw in z.coerce.date().
-  const sessionStart = parseTimestamp(session?.timestamp ?? firstTimestamp(records)) ?? options.now ?? new Date(0);
-
-  const transcript: UnifiedTranscript = unifiedTranscriptSchema.parse({
-    v: 1 as const,
-    id: session?.id ?? deriveId(records),
-    source: "openclaw" as const,
+  if (skipped) options.onWarning?.(`Skipped ${skipped} malformed OpenClaw record(s) or content block(s).`);
+  if (!messages.length) return null;
+  const validRecords = records.map(asRecord).filter((r) => r !== null);
+  const firstTimestamp = validRecords.map((r) => parseTimestamp(asString(r.timestamp))).find(Boolean);
+  const sessionStart = parseTimestamp(session?.timestamp) ?? firstTimestamp ?? options.now ?? new Date(0);
+  return unifiedTranscriptSchema.parse({
+    v: 1,
+    id: options.sessionId ?? session?.id ?? validRecords.map((r) => asString(r.id)).find(Boolean) ?? "openclaw-session",
+    source: "openclaw",
     timestamp: sessionStart,
     preview: derivePreview(userTexts),
     summary: null,
     model: primaryModel,
-    clientVersion: options.clientVersion ?? (session?.version != null ? String(session.version) : null),
-    blendedTokens: totalInputTokens + totalOutputTokens,
+    clientVersion: options.clientVersion ?? null,
+    blendedTokens: tokenUsage.inputTokens + tokenUsage.outputTokens,
     costUsd: totalCost,
-    messageCount: unifiedMessages.length,
-    ...stats,
+    messageCount: messages.length,
+    ...calculateTranscriptStats(messages),
     tokenUsage,
-    modelUsage: primaryModel ? [unifiedModelUsageSchema.parse({ model: primaryModel, usage: tokenUsage })] : [],
-    git: gitContext,
+    modelUsage: [...modelUsage].map(([model, usage]) => unifiedModelUsageSchema.parse({ model, usage })),
+    git: options.gitContext ?? unifiedGitContextSchema.parse({ repo: null, branch: null, relativeCwd: null }),
     cwd: cwd ? formatCwdWithTilde(cwd) : null,
-    messages: unifiedMessages,
+    messages,
   });
-
-  return transcript;
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+function tokenNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+function emptyUsage(): UnifiedTokenUsage {
+  return { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, reasoningOutputTokens: 0, totalTokens: 0 };
+}
+function addUsage(target: UnifiedTokenUsage, delta: UnifiedTokenUsage): void {
+  for (const key of Object.keys(target) as Array<keyof UnifiedTokenUsage>) target[key] += delta[key];
+}
 function normalizeToolName(name: string): string {
+  return TOOL_NAME_MAP[name.toLowerCase()] ?? name.charAt(0).toUpperCase() + name.slice(1);
+}
+function mapToolCalls(name: string, args: unknown, cwd: string | null): Array<{ toolName: string; input: unknown }> {
+  const a = asRecord(args) ?? {};
   const lower = name.toLowerCase();
-  return TOOL_NAME_MAP[lower] ?? name.charAt(0).toUpperCase() + name.slice(1);
-}
-
-function mapToolInput(name: string, args: Record<string, unknown> | undefined, cwd: string | null): unknown {
-  const a = args ?? {};
-  let mapped: unknown;
-  switch (name.toLowerCase()) {
-    case "read":
-      mapped = { file_path: a.path ?? a.file_path };
-      break;
-    case "write":
-      mapped = { file_path: a.path ?? a.file_path, content: a.content };
-      break;
-    case "bash":
-      mapped = { command: a.command };
-      break;
-    default:
-      mapped = a;
+  if (lower === "apply_patch" && Array.isArray(a.changes)) {
+    const edits = a.changes.flatMap((value) => {
+      const change = asRecord(value);
+      if (!change || typeof change.path !== "string" || typeof change.diff !== "string") return [];
+      return [
+        {
+          toolName: "Edit",
+          input: {
+            file_path: change.path,
+            diff: change.diff,
+            ...(asRecord(change.kind)?.move_path ? { move_path: asRecord(change.kind)?.move_path } : {}),
+          },
+        },
+      ];
+    });
+    if (edits.length)
+      return edits.map((edit) => ({ ...edit, input: cwd ? relativizePaths(edit.input, cwd) : edit.input }));
   }
-  // Relativize absolute paths against the session cwd, like the other converters,
-  // so uploaded transcripts don't leak absolute home-directory paths.
-  return cwd ? relativizePaths(mapped, cwd) : mapped;
-}
-
-function mapToolOutput(canonicalToolName: string, text: string, cwd: string | null): unknown {
-  if (!text) return text;
-  let result: unknown;
-  switch (canonicalToolName) {
-    case "Read": {
-      const numLines = text.split("\n").length;
-      result = { file: { content: text, numLines, totalLines: numLines } };
-      break;
+  let input: Record<string, unknown> = a;
+  if (lower === "read" || lower === "write" || lower === "edit") {
+    const { path, file_path, ...rest } = a;
+    input = { ...rest, file_path: path ?? file_path };
+    if (lower === "edit" && typeof a.oldText === "string" && typeof a.newText === "string") {
+      input.diff =
+        [...a.oldText.split("\n").map((line) => `-${line}`), ...a.newText.split("\n").map((line) => `+${line}`)].join(
+          "\n",
+        ) + "\n";
     }
-    case "Bash":
-      result = { stdout: text };
-      break;
-    default:
-      // Generic tools (Write, Browser, Process, Message, ...) render the raw text.
-      result = text;
   }
+  return [{ toolName: normalizeToolName(name), input: cwd ? relativizePaths(input, cwd) : input }];
+}
+function mapToolOutput(name: string, text: string, cwd: string | null): unknown {
+  let result: unknown = text;
+  if (text && name === "Read") {
+    const numLines = text.split("\n").length;
+    result = { file: { content: text, numLines, totalLines: numLines } };
+  } else if (text && name === "Bash") result = { stdout: text };
   return cwd ? relativizePaths(result, cwd) : result;
 }
-
-function extractText(content: OpenClawInnerMessage["content"]): string {
+export function extractOpenClawText(content: unknown): string {
+  return extractText(content);
+}
+function extractText(content: unknown): string {
+  if (typeof content === "string") return content.trim();
   if (!Array.isArray(content)) return "";
   return content
-    .map((block) =>
-      block && typeof block === "object" && typeof (block as { text?: string }).text === "string"
-        ? (block as { text?: string }).text
-        : "",
-    )
+    .map((value) => asString(asRecord(value)?.text) ?? "")
     .filter(Boolean)
     .join("\n")
     .trim();
 }
-
-/** Parse a timestamp string into a valid Date, or null when missing/invalid. */
 function parseTimestamp(value: string | undefined): Date | null {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
-
-function firstTimestamp(records: OpenClawRecord[]): string | undefined {
-  for (const r of records) {
-    if (r.type === "message" && typeof (r as OpenClawMessageRecord).timestamp === "string") {
-      return (r as OpenClawMessageRecord).timestamp;
-    }
-  }
-  return undefined;
-}
-
-function deriveId(records: OpenClawRecord[]): string {
-  for (const r of records) {
-    if (r.type === "message" && typeof (r as OpenClawMessageRecord).id === "string") {
-      return (r as OpenClawMessageRecord).id as string;
-    }
-  }
-  return "openclaw-session";
-}
-
 function derivePreview(userTexts: string[]): string | null {
   for (const text of userTexts) {
     const trimmed = text.trim().replace(/\s+/g, " ");
-    if (!trimmed) continue;
-    if (trimmed.startsWith("<") && trimmed.includes(">")) continue;
+    if (!trimmed || (trimmed.startsWith("<") && trimmed.includes(">"))) continue;
     return trimmed.replace(/^["']|["']$/g, "");
   }
-  return userTexts.length > 0 ? userTexts[0].trim().replace(/\s+/g, " ") : null;
+  return userTexts[0]?.trim().replace(/\s+/g, " ") ?? null;
 }
-
 export type { UnifiedGitContext, UnifiedTokenUsage, UnifiedTranscript, UnifiedTranscriptMessage };

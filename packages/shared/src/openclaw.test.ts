@@ -179,3 +179,154 @@ describe("discoverOpenClawSessions", () => {
     }
   });
 });
+
+describe("native OpenClaw compatibility", () => {
+  it("preserves the prompts, results, patch statistics, and reasoning usage from a live v2 Codex shape", () => {
+    const t = convert("v2/codex.jsonl");
+    expect(t.userMessageCount).toBe(1);
+    expect(t.preview).toStartWith("Change beta to gamma");
+    expect(t.toolCount).toBe(4);
+    expect(t.filesChanged).toBe(1);
+    expect(t.linesModified).toBe(1);
+    expect(t.tokenUsage.reasoningOutputTokens).toBe(222);
+    expect(t.tokenUsage.totalTokens).toBe(187535);
+    expect(t.clientVersion).toBeNull(); // JSONL version 3 is a format version, not an app release.
+    const tools = t.messages.filter((m) => m.type === "tool-call");
+    expect(tools.every((m) => m.output !== undefined)).toBe(true);
+    expect(tools[2]).toMatchObject({
+      toolName: "Edit",
+      input: { file_path: "./sample.txt", diff: "@@ -1,2 +1,2 @@\n alpha\n-beta\n+gamma\n" },
+    });
+    expect(tools[3]).toMatchObject({ toolName: "Bash", input: { cwd: "." }, output: { stdout: "alpha\ngamma" } });
+    expect(t.messages.at(-1)).toMatchObject({ type: "agent", text: "OPENCLAW_V2_SMOKE_OK" });
+  });
+
+  it("maps exec, read offsets and native edit arguments; failed edits do not count", () => {
+    const t = convertOpenClawTranscript([
+      { type: "session", id: "native", cwd: "/repo" },
+      {
+        type: "message",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "toolCall", id: "shell", name: "exec", arguments: { command: "pwd", workdir: "/repo" } },
+            { type: "toolCall", id: "read", name: "read", arguments: { path: "/repo/a", offset: 8, limit: 4 } },
+            {
+              type: "toolCall",
+              id: "edit",
+              name: "edit",
+              arguments: { path: "/repo/a", oldText: "old", newText: "new" },
+            },
+          ],
+        },
+      },
+      { type: "message", message: { role: "toolResult", toolCallId: "edit", content: "failed", isError: true } },
+    ]);
+    expect(t?.messages[0]).toMatchObject({ toolName: "Bash", input: { command: "pwd", workdir: "." } });
+    expect(t?.messages[1]).toMatchObject({ input: { file_path: "./a", offset: 8, limit: 4 } });
+    expect(t?.messages[2]).toMatchObject({
+      toolName: "Edit",
+      input: { file_path: "./a", diff: "-old\n+new\n" },
+      output: "failed",
+      isError: true,
+    });
+    expect(t?.filesChanged).toBe(0);
+  });
+
+  it("keeps every file in a multi-file patch and attaches the shared result to each", () => {
+    const t = convertOpenClawTranscript([
+      { type: "session", id: "patch", cwd: "/repo" },
+      {
+        type: "message",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "patch-call",
+              name: "apply_patch",
+              arguments: {
+                changes: [
+                  { path: "/repo/a", diff: "-old\n+new\n", kind: { type: "update" } },
+                  { path: "/repo/b", diff: "+added\n", kind: { type: "add" } },
+                ],
+              },
+            },
+          ],
+        },
+      },
+      {
+        type: "message",
+        message: { role: "toolResult", toolCallId: "patch-call", content: [{ type: "toolResult", text: "done" }] },
+      },
+    ]);
+    expect(t?.filesChanged).toBe(2);
+    expect(t?.linesAdded).toBe(1);
+    expect(t?.linesModified).toBe(1);
+    expect(t?.messages.map((m) => m.id)).toEqual(["patch-call:0", "patch-call:1"]);
+    expect(t?.messages.every((m) => m.type === "tool-call" && m.output === "done")).toBe(true);
+  });
+
+  it("keeps per-model usage, cache writes and reasoning without double counting", () => {
+    const t = convertOpenClawTranscript([
+      {
+        type: "message",
+        id: "first",
+        message: {
+          role: "assistant",
+          model: "a",
+          content: "first",
+          usage: { input: 10, output: 5, cacheRead: 2, cacheWrite: 3, reasoningTokens: 4 },
+        },
+      },
+      {
+        type: "message",
+        message: {
+          role: "assistant",
+          model: "b",
+          content: "second",
+          usage: { input: 90, output: 20, totalTokens: 110 },
+        },
+      },
+    ]);
+    expect(t?.modelUsage.map((m) => [m.model, m.usage.inputTokens, m.usage.totalTokens])).toEqual([
+      ["a", 10, 20],
+      ["b", 90, 110],
+    ]);
+    expect(t?.tokenUsage).toMatchObject({ totalTokens: 130, outputTokens: 25, reasoningOutputTokens: 4 });
+  });
+
+  it("retains good neighbors and reports malformed input before property access", () => {
+    const warnings: string[] = [];
+    const parsed = parseOpenClawRecords('null\n7\n[]\ninvalid\n{"type":"session","id":"s"}', (w) => warnings.push(w));
+    const t = convertOpenClawTranscript(
+      [
+        null,
+        ...parsed,
+        { type: "session", id: 42, cwd: [], timestamp: {} },
+        { type: "compaction", summary: 42 },
+        {
+          type: "message",
+          message: {
+            role: "assistant",
+            model: {},
+            usage: { input: "bad", output: -1 },
+            content: [
+              null,
+              { type: "text", text: 42 },
+              { type: "thinking", thinking: [] },
+              { type: "text", text: "kept" },
+            ],
+          },
+        },
+        { type: "message", message: { role: "user", content: [null, { type: "text", text: "also kept" }] } },
+      ],
+      { onWarning: (w) => warnings.push(w) },
+    );
+    expect(t?.messages.map((m) => ("text" in m ? m.text : ""))).toEqual(["kept", "also kept"]);
+    expect(t?.tokenUsage.totalTokens).toBe(0);
+    expect(t?.timestamp.getTime()).toBe(0);
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toContain("4 malformed");
+  });
+});
