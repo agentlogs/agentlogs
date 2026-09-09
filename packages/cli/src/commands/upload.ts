@@ -8,7 +8,12 @@ import { convertPiTranscript, type PiSessionEntry, type PiSessionHeader } from "
 import { LiteLLMPricingFetcher } from "@agentlogs/shared/pricing";
 import { resolveGitContext } from "@agentlogs/shared/claudecode";
 import { pickTranscript } from "../tui/transcript-picker";
-import { performUploadToAllEnvs, uploadUnifiedToAllEnvs } from "../lib/perform-upload";
+import {
+  performUploadToAllEnvs,
+  skipMessageLines,
+  uploadUnifiedToAllEnvs,
+  type MultiEnvUploadResult,
+} from "../lib/perform-upload";
 import { getAuthenticatedEnvironments } from "../config";
 
 export interface UploadCommandOptions {
@@ -167,7 +172,7 @@ async function uploadOpenCodeTranscript(transcript: DiscoveredTranscript): Promi
 
   if (result.skipped) {
     console.log("");
-    console.log("Skipped: Repository not in allowlist");
+    process.stdout.write(`${skipMessageLines(result.candidatesSeen, result.skipReason).join("\n")}\n`);
     return true; // Skipped is not a failure
   }
 
@@ -258,7 +263,7 @@ async function uploadClineTranscript(transcript: DiscoveredTranscript): Promise<
 
   if (uploadResult.skipped) {
     console.log("");
-    console.log("Skipped: Repository not in allowlist");
+    process.stdout.write(`${skipMessageLines(uploadResult.candidatesSeen, uploadResult.skipReason).join("\n")}\n`);
     return true;
   }
 
@@ -329,7 +334,7 @@ async function uploadPiTranscript(transcript: DiscoveredTranscript): Promise<boo
 
   if (uploadResult.skipped) {
     console.log("");
-    console.log("Skipped: Repository not in allowlist");
+    process.stdout.write(`${skipMessageLines(uploadResult.candidatesSeen, uploadResult.skipReason).join("\n")}\n`);
     return true;
   }
 
@@ -413,23 +418,10 @@ function readOpenCodeSession(sessionId: string): OpenCodeExport | null {
   }
 }
 
-interface MultiEnvResult {
-  results: Array<{
-    envName: string;
-    baseURL: string;
-    success: boolean;
-    error?: string;
-  }>;
-  id: string;
-  sessionId: string;
-  anySuccess: boolean;
-  allSuccess: boolean;
-}
-
 /**
  * Print upload result and return success status
  */
-function printUploadResult(result: MultiEnvResult): boolean {
+function printUploadResult(result: MultiEnvUploadResult): boolean {
   if (result.anySuccess && result.id) {
     console.log("");
     console.log("Upload successful!");
@@ -444,7 +436,7 @@ function printUploadResult(result: MultiEnvResult): boolean {
     return true;
   } else if (result.results.length === 0) {
     console.log("");
-    console.log("Skipped: Repository not in allowlist");
+    process.stdout.write(`${skipMessageLines(result.candidatesSeen, result.skipReason).join("\n")}\n`);
     return true; // Skipped is not a failure
   } else {
     console.error("");

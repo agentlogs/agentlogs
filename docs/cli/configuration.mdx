@@ -52,3 +52,17 @@ Repository permissions are configured in `settings.json`:
 | `repos[key].allow`                     | boolean                               | Whether to capture this repo                  |
 | `repos[key].visibility`                | `"private"` \| `"team"` \| `"public"` | Visibility override                           |
 | `repos[key].addTranscriptLinkToCommit` | boolean                               | Per-repo override for adding transcript links |
+
+## Sessions with Multiple Directories
+
+For Claude Code and Codex JSONL uploads, capture permissions are checked across the session's recorded working directories before upload:
+
+- In **allowlist** mode, every discovered Git root must have at least one allowlisted remote. A root with no remote, an unreadable config, or an unsupported remote URL blocks the whole upload.
+- In **denylist** mode, any explicitly denied remote blocks the whole upload, including when another remote or directory is allowed.
+- Directories outside Git repositories do not add another Git root to check. A session that starts in your home directory and then works in an allowed clone can upload. If no repository is found anywhere, allowlist mode skips it and denylist mode permits it.
+
+When capture is permitted, AgentLogs attributes the transcript to the Git root with the most directory references in the transcript, combining references to its subdirectories. Ties keep the first encountered candidate. Within that root, `origin` is preferred when allowed; otherwise another allowed remote, such as `upstream`, is used. The selected repository also supplies the visibility setting and repository links.
+
+For a fork with a personal `origin` and an allowlisted `upstream`, add the upstream's normalized repository identifier to `repos`, for example `github.com/myorg/project`. Use `agentlogs settings` to edit these entries. `agentlogs allow` still applies to the current clone's `origin`; Claude Code's commit-link permission check also uses that origin.
+
+Linked Git worktrees use their shared repository config and their own branch. Directory discovery reads Claude Code's record-level `cwd` and Codex's `session_meta` and `turn_context` payloads. Discovery and hook directory hints supplement these recorded directories for permission checks. AgentLogs does not infer directory changes from shell commands or message text.

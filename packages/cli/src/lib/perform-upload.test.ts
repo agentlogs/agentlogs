@@ -26,9 +26,13 @@ describe("stampResolvedRepoId", () => {
     expect(stampResolvedRepoId(t, null)).toBe(t);
   });
 
-  it("is a no-op when there is no git context", () => {
+  it("attributes a resolved repo even when the source omitted git context", () => {
     const t = transcriptWithGit(null);
-    expect(stampResolvedRepoId(t, "github.com/acme/repo")).toBe(t);
+    expect(stampResolvedRepoId(t, "github.com/acme/repo").git).toEqual({
+      relativeCwd: null,
+      branch: null,
+      repo: "github.com/acme/repo",
+    });
   });
 
   it("is a no-op when the repo already matches", () => {
@@ -38,6 +42,24 @@ describe("stampResolvedRepoId", () => {
 });
 
 describe("skipMessageLines", () => {
+  it("reports the blocking root without claiming every repo is unlisted", () => {
+    const text = skipMessageLines(["github.com/allowed/repo", "github.com/private/repo"], {
+      reason: "unlisted-root",
+      gitRoot: "/private",
+    }).join("\n");
+    expect(text).toContain("a Git root with no allowlisted remote");
+    expect(text).toContain("Blocking Git root: /private");
+    expect(text).not.toContain("none of the repos");
+  });
+
+  it("distinguishes denied repositories from unresolved roots", () => {
+    expect(skipMessageLines([], { reason: "denied-repo", repoId: "github.com/secret/repo" }).join("\n")).toContain(
+      "explicitly denied",
+    );
+    expect(skipMessageLines([], { reason: "unresolved-root", gitRoot: "/private" }).join("\n")).toContain(
+      "no readable, supported remote",
+    );
+  });
   it("lists the repos seen when present", () => {
     const lines = skipMessageLines(["github.com/a/b", "github.com/c/d"]);
     expect(lines.join("\n")).toContain("github.com/a/b, github.com/c/d");
@@ -55,6 +77,24 @@ describe("skipMessageLines", () => {
 });
 
 describe("extractCwdCandidatesFromRecords", () => {
+  it("reads Codex session metadata and turn contexts, ignoring unrelated payloads", () => {
+    expect(
+      extractCwdCandidatesFromRecords(
+        [
+          { type: "session_meta", payload: { cwd: "/home" } },
+          { type: "turn_context", payload: { cwd: "/repo" } },
+          { type: "turn_context", payload: { cwd: "/repo/src/.." } },
+          { type: "response_item", payload: { cwd: "/ignored" } },
+          { type: "turn_context", payload: { cwd: 42 } },
+          { type: "turn_context", payload: null },
+        ],
+        "codex",
+      ),
+    ).toEqual([
+      { cwd: "/repo", weight: 2 },
+      { cwd: "/home", weight: 1 },
+    ]);
+  });
   it("ranks cwds by frequency, ties broken by first appearance", () => {
     const records = [
       { cwd: "/home" },

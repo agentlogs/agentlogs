@@ -68,6 +68,58 @@ describe("buildRepoCandidates", () => {
 });
 
 describe("resolveUploadTarget", () => {
+  it("retains a Git root without a resolvable remote in allowlist checks", async () => {
+    const target = await resolveUploadTarget(
+      [
+        { cwd: CLONE, weight: 100 },
+        { cwd: FORK, weight: 1 },
+      ],
+      CLONE,
+      {
+        resolveCwd: stubResolve({
+          [CLONE]: { gitRoot: CLONE, repos: [{ repoId: "github.com/acme/repo", remote: "origin" }] },
+          [FORK]: { gitRoot: FORK, repos: [] },
+        }),
+        isAllowed: allowlist("github.com/acme/repo"),
+      },
+    );
+    expect(target.allowed).toBe(false);
+    expect(target.skipReason).toEqual({ reason: "unresolved-root", gitRoot: FORK });
+  });
+
+  it.each(["missing-config", "unreadable-config", "invalid-gitdir"])(
+    "fails closed for %s beside an allowed repo",
+    async (kind) => {
+      const dir = mkdtempSync(join(tmpdir(), "agentlogs-unresolved-"));
+      try {
+        const allowed = join(dir, "allowed");
+        const unresolved = join(dir, "unresolved");
+        mkdirSync(join(allowed, ".git"), { recursive: true });
+        writeFileSync(join(allowed, ".git/config"), '[remote "origin"]\nurl = https://github.com/acme/repo.git\n');
+        mkdirSync(unresolved);
+        if (kind === "invalid-gitdir") {
+          writeFileSync(join(unresolved, ".git"), "invalid pointer");
+        } else {
+          mkdirSync(join(unresolved, ".git"));
+          if (kind === "unreadable-config") mkdirSync(join(unresolved, ".git/config"));
+        }
+        const target = await resolveUploadTarget(
+          [
+            { cwd: allowed, weight: 100 },
+            { cwd: unresolved, weight: 1 },
+          ],
+          allowed,
+          {
+            isAllowed: allowlist("github.com/acme/repo"),
+          },
+        );
+        expect(target.allowed).toBe(false);
+        expect(target.skipReason).toEqual({ reason: "unresolved-root", gitRoot: unresolved });
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
   it("home case: selects the allowlisted clone, not the non-repo home dir", async () => {
     const resolve = stubResolve({
       [HOME]: null,

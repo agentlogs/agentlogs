@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -8,6 +8,7 @@ import {
   parseGitRemoteUrl,
   readGitRemotes,
   readGitRemoteUrl,
+  readGitBranch,
 } from "./git";
 
 function makeRepo(config: string): string {
@@ -50,6 +51,27 @@ describe("parseGitRemoteUrl", () => {
 });
 
 describe("readGitRemotes", () => {
+  it("uses a linked worktree's common config and its own HEAD", async () => {
+    const root = mkdtempSync(join(tmpdir(), "agentlogs-worktree-"));
+    try {
+      const checkout = join(root, "checkout");
+      const gitDirectory = join(root, "repo/.git/worktrees/checkout");
+      mkdirSync(checkout);
+      mkdirSync(gitDirectory, { recursive: true });
+      writeFileSync(join(checkout, ".git"), "gitdir: ../repo/.git/worktrees/checkout\n");
+      writeFileSync(join(gitDirectory, "commondir"), "../..\n");
+      writeFileSync(join(root, "repo/.git/config"), FORK_WITH_UPSTREAM);
+      writeFileSync(join(root, "repo/.git/HEAD"), "ref: refs/heads/main\n");
+      writeFileSync(join(gitDirectory, "HEAD"), "ref: refs/heads/feature\n");
+      expect(await getRepoIdsFromGitRoot(checkout)).toEqual([
+        { repoId: "github.com/me/repo-fork", remote: "origin" },
+        { repoId: "github.com/acme/repo", remote: "upstream" },
+      ]);
+      expect(await readGitBranch(checkout)).toBe("feature");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   it("reads a single origin remote", async () => {
     const root = makeRepo(ORIGIN_ONLY);
     expect(await readGitRemotes(root)).toEqual([{ name: "origin", url: "git@github.com:owner/repo.git" }]);

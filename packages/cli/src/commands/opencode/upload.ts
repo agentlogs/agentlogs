@@ -148,7 +148,7 @@ export async function opencodeUploadCommand(sessionId: string): Promise<void> {
 
   // Exit if skipped due to allowlist
   if (uploadResult.skipped) {
-    for (const line of skipMessageLines(uploadResult.candidatesSeen)) {
+    for (const line of skipMessageLines(uploadResult.candidatesSeen, uploadResult.skipReason)) {
       console.log(line);
     }
     process.exit(0);

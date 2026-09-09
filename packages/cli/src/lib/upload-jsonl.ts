@@ -36,7 +36,7 @@ export async function uploadCommand(transcriptArg: string, source: TranscriptSou
     // Handle skipped uploads (repo not allowed)
     if (result.results.length === 0) {
       console.log("");
-      for (const line of skipMessageLines(result.candidatesSeen)) {
+      for (const line of skipMessageLines(result.candidatesSeen, result.skipReason)) {
         console.log(`- ${line}`);
       }
       return;

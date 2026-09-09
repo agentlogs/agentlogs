@@ -13,11 +13,12 @@ import type { UploadOptions } from "@agentlogs/shared/upload";
 import { getAuthenticatedEnvironments, type EnvName } from "../config";
 import { cacheTranscriptId, getOrCreateTranscriptId } from "../local-store";
 import { getRepoVisibility } from "../settings";
-import { type CwdCandidate, resolveUploadTarget } from "./repo-resolution";
+import { type CwdCandidate, type UploadSkipReason, resolveUploadTarget } from "./repo-resolution";
 
 export interface PerformUploadParams {
   transcriptPath: string;
   sessionId?: string;
+  /** Discovery or hook directory hint; never replaces recorded directories in permission checks. */
   cwdOverride?: string;
   source?: TranscriptSource;
   /** Visibility override - if not set, server decides based on repo visibility */
@@ -40,6 +41,7 @@ export interface PerformUploadResult {
   skipped: boolean;
   /** Distinct repo ids seen across the session's directories (populated on skip). */
   candidatesSeen?: string[];
+  skipReason?: UploadSkipReason;
 }
 
 export function prepareUnifiedTranscriptForUpload(transcript: UnifiedTranscript): UnifiedTranscript {
@@ -57,31 +59,33 @@ export function prepareUnifiedTranscriptForUpload(transcript: UnifiedTranscript)
  * a fork session keeps the origin-only repo derived during conversion, mis-
  * attributing the upload to the personal fork instead of the canonical repo that
  * passed the allowlist. Runs before link-rewriting/redaction so those use the
- * selected repo too. No-op when there is no git context or the repo already matches.
+ * selected repo too, even when the source omitted git metadata.
  */
 export function stampResolvedRepoId(transcript: UnifiedTranscript, repoId: string | null): UnifiedTranscript {
-  if (!repoId || !transcript.git || transcript.git.repo === repoId) {
+  if (!repoId || transcript.git?.repo === repoId) {
     return transcript;
   }
-  return { ...transcript, git: { ...transcript.git, repo: repoId } };
+  return { ...transcript, git: { relativeCwd: null, branch: null, ...transcript.git, repo: repoId } };
 }
 
 /**
  * Shared user-facing message lines for an allowlist-skipped upload, so every
  * command (claude-code, opencode, cline, pi) reports the same explanation.
  */
-export function skipMessageLines(candidatesSeen: string[] | undefined): string[] {
+export function skipMessageLines(candidatesSeen: string[] | undefined, skipReason?: UploadSkipReason): string[] {
   const seen = candidatesSeen ?? [];
-  if (seen.length > 0) {
-    return [
-      "Upload skipped: none of the repos this session worked in are allowlisted.",
-      `Repos seen: ${seen.join(", ")}`,
-      "Run `agentlogs allow` in the target clone to enable uploads for it.",
-    ];
-  }
+  const explanations: Record<UploadSkipReason["reason"], string> = {
+    "denied-repo": "this session includes an explicitly denied repository.",
+    "unlisted-root": "this session includes a Git root with no allowlisted remote.",
+    "unresolved-root": "a Git root in this session has no readable, supported remote to check against the allowlist.",
+    "no-repo": "no allowlisted git repository was found among this session's directories.",
+  };
   return [
-    "Upload skipped: no allowlisted git repository was found among this session's directories.",
-    "Run `agentlogs allow` in the target clone to enable uploads for it.",
+    `Upload skipped: ${skipReason ? explanations[skipReason.reason] : seen.length ? "repository capture settings do not allow this session." : explanations["no-repo"]}`,
+    ...(skipReason?.gitRoot ? [`Blocking Git root: ${skipReason.gitRoot}`] : []),
+    ...(skipReason?.repoId ? [`Denied repository: ${skipReason.repoId}`] : []),
+    ...(seen.length > 0 ? [`Repos seen: ${seen.join(", ")}`] : []),
+    "Run `agentlogs settings` to review capture permissions. `agentlogs allow` applies to the current clone's origin remote.",
   ];
 }
 
@@ -113,18 +117,19 @@ export interface UploadUnifiedResult {
   skipped: boolean;
   /** Distinct repo ids seen across the session's directories (populated on skip). */
   candidatesSeen?: string[];
+  skipReason?: UploadSkipReason;
 }
 
 /**
- * Build the weighted cwd candidate list for repo resolution. When an explicit
- * cwd override is supplied, only that directory is considered.
+ * Recorded directories determine attribution. Include a discovery/hook hint as
+ * an additional permission candidate without increasing its attribution weight.
  */
 function cwdCandidatesForParams(params: PerformUploadParams, parsed: ParsedTranscriptFile): CwdCandidate[] {
   const override = params.cwdOverride?.trim();
-  if (override) {
-    return [{ cwd: override, weight: 1 }];
+  const candidates = extractCwdCandidatesFromRecords(parsed.records, params.source);
+  if (override && !candidates.some(({ cwd }) => cwd === resolve(override))) {
+    candidates.push({ cwd: resolve(override), weight: candidates.length > 0 ? 0 : 1 });
   }
-  const candidates = extractCwdCandidatesFromRecords(parsed.records);
   return candidates.length > 0 ? candidates : [{ cwd: parsed.cwd, weight: 1 }];
 }
 
@@ -157,6 +162,7 @@ export async function performUpload(
       source: params.source ?? "claude-code",
       skipped: true,
       candidatesSeen: target.candidatesSeen,
+      skipReason: target.skipReason,
     };
   }
 
@@ -263,14 +269,14 @@ export function resolveTranscriptPath(inputPath: string): string | null {
   return null;
 }
 
-function extractCwdFromRecords(records: Record<string, unknown>[]): string | null {
-  for (const record of records) {
-    const cwd = typeof record.cwd === "string" ? record.cwd.trim() : "";
-    if (cwd) {
-      return cwd;
-    }
+function recordCwd(record: Record<string, unknown>, source: TranscriptSource): string | null {
+  let cwd: unknown = record.cwd;
+  if (source === "codex") {
+    if (record.type !== "session_meta" && record.type !== "turn_context") return null;
+    const payload = record.payload;
+    cwd = payload && typeof payload === "object" ? (payload as Record<string, unknown>).cwd : undefined;
   }
-  return null;
+  return typeof cwd === "string" && cwd.trim() ? resolve(cwd.trim()) : null;
 }
 
 /**
@@ -279,10 +285,13 @@ function extractCwdFromRecords(records: Record<string, unknown>[]): string | nul
  * appearance. Used to attribute a session to the repo it actually worked in,
  * rather than the first (often a home/orchestration) directory.
  */
-export function extractCwdCandidatesFromRecords(records: Record<string, unknown>[]): CwdCandidate[] {
+export function extractCwdCandidatesFromRecords(
+  records: Record<string, unknown>[],
+  source: TranscriptSource = "claude-code",
+): CwdCandidate[] {
   const counts = new Map<string, number>();
   for (const record of records) {
-    const cwd = typeof record.cwd === "string" ? record.cwd.trim() : "";
+    const cwd = recordCwd(record, source);
     if (cwd) {
       counts.set(cwd, (counts.get(cwd) ?? 0) + 1);
     }
@@ -292,8 +301,10 @@ export function extractCwdCandidatesFromRecords(records: Record<string, unknown>
   return [...counts.entries()].map(([cwd, weight]) => ({ cwd, weight })).sort((a, b) => b.weight - a.weight);
 }
 
-function extractGitBranchFromRecords(records: Record<string, unknown>[]): string | undefined {
+export function extractGitBranchFromRecords(records: Record<string, unknown>[], cwd: string): string | undefined {
   for (const record of records) {
+    // A multi-repo session can record branches belonging to other roots.
+    if (recordCwd(record, "claude-code") !== resolve(cwd)) continue;
     const gitBranch = typeof record.gitBranch === "string" ? record.gitBranch.trim() : "";
     if (gitBranch) {
       return gitBranch;
@@ -322,6 +333,7 @@ export interface MultiEnvUploadResult {
   allSuccess: boolean;
   /** Distinct repo ids seen across the session's directories (populated on skip). */
   candidatesSeen?: string[];
+  skipReason?: UploadSkipReason;
 }
 
 interface ParsedTranscriptFile {
@@ -373,7 +385,7 @@ function parseTranscriptFile(params: PerformUploadParams): ParsedTranscriptFile 
   const cwd =
     params.cwdOverride && params.cwdOverride.trim().length > 0
       ? params.cwdOverride.trim()
-      : (extractCwdFromRecords(records) ?? process.cwd());
+      : (records.map((record) => recordCwd(record, params.source ?? "claude-code")).find(Boolean) ?? process.cwd());
 
   return { records, cwd, invalidLines };
 }
@@ -402,14 +414,14 @@ export async function convertTranscriptFile(
   const pricing = Object.fromEntries(pricingData);
 
   // Resolve git context from .git/config for accurate repo detection
-  const gitBranch = extractGitBranchFromRecords(parsed.records);
+  const gitBranch = extractGitBranchFromRecords(parsed.records, parsed.cwd);
   const gitContext = await resolveGitContext(parsed.cwd, gitBranch);
 
   const converterOptions = { pricing, gitContext };
 
   const conversionResult =
     source === "codex"
-      ? convertCodexTranscript(parsed.records, { pricing })
+      ? convertCodexTranscript(parsed.records, converterOptions)
       : convertClaudeCodeTranscript(parsed.records, converterOptions);
 
   if (!conversionResult) {
@@ -467,6 +479,7 @@ export async function performUploadToAllEnvs(params: PerformUploadParams): Promi
       anySuccess: false,
       allSuccess: false,
       candidatesSeen: target.candidatesSeen,
+      skipReason: target.skipReason,
     };
   }
 
@@ -476,7 +489,7 @@ export async function performUploadToAllEnvs(params: PerformUploadParams): Promi
   // Now do expensive conversion (pass pre-parsed data to avoid double-parsing)
   const converted = await convertTranscriptFile(params, parsed);
 
-  // Upload using shared logic (allowlist already checked, skip that check)
+  // Upload using shared logic, which also rechecks the selected root.
   const result = await uploadUnifiedToAllEnvs({
     unifiedTranscript: converted.unifiedTranscript,
     sessionId: converted.sessionId,
@@ -495,6 +508,7 @@ export async function performUploadToAllEnvs(params: PerformUploadParams): Promi
       anySuccess: false,
       allSuccess: false,
       candidatesSeen: result.candidatesSeen,
+      skipReason: result.skipReason,
     };
   }
 
@@ -534,6 +548,7 @@ export async function uploadUnifiedToAllEnvs(params: UploadUnifiedParams): Promi
       allSuccess: false,
       skipped: true,
       candidatesSeen: target.candidatesSeen,
+      skipReason: target.skipReason,
     };
   }
   const repoId = target.repoId;

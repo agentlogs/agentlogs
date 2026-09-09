@@ -24,6 +24,13 @@ export interface ResolvedUploadTarget {
   allowed: boolean;
   /** Distinct repo ids seen across the session's directories (for messaging). */
   candidatesSeen: string[];
+  skipReason?: UploadSkipReason;
+}
+
+export interface UploadSkipReason {
+  reason: "denied-repo" | "unlisted-root" | "unresolved-root" | "no-repo";
+  gitRoot?: string;
+  repoId?: string;
 }
 
 export interface CwdResolution {
@@ -132,8 +139,7 @@ export async function resolveUploadTarget(
   const resolveCwd = deps.resolveCwd ?? createDefaultResolveCwd();
   const isAllowed = deps.isAllowed ?? createRepoAllowedChecker();
 
-  const candidates = await buildRepoCandidates(cwdCandidates, resolveCwd);
-  const candidatesSeen = [...new Set(candidates.map((candidate) => candidate.repoId))];
+  const candidates: RepoCandidate[] = [];
 
   // Group candidates by git root. Weight is summed over DISTINCT cwds under the
   // root (not per remote). allowedRepo is the first allowed repo in priority order
@@ -142,39 +148,67 @@ export async function resolveUploadTarget(
     weight: number;
     order: number;
     cwdsSeen: Set<string>;
-    firstRepo: RepoCandidate;
+    gitRoot: string;
+    cwd: string;
+    firstRepo: RepoCandidate | null;
     allowedRepo: RepoCandidate | null;
   }
   const rootGroups = new Map<string, RootGroup>();
   let order = 0;
-  for (const candidate of candidates) {
-    let group = rootGroups.get(candidate.gitRoot);
+  for (const { cwd, weight } of cwdCandidates) {
+    const resolved = await resolveCwd(cwd);
+    if (!resolved) continue;
+    let group = rootGroups.get(resolved.gitRoot);
     if (!group) {
-      group = { weight: 0, order: order++, cwdsSeen: new Set(), firstRepo: candidate, allowedRepo: null };
-      rootGroups.set(candidate.gitRoot, group);
+      group = {
+        weight: 0,
+        order: order++,
+        cwdsSeen: new Set(),
+        gitRoot: resolved.gitRoot,
+        cwd,
+        firstRepo: null,
+        allowedRepo: null,
+      };
+      rootGroups.set(resolved.gitRoot, group);
     }
-    if (!group.cwdsSeen.has(candidate.cwd)) {
-      group.cwdsSeen.add(candidate.cwd);
-      group.weight += candidate.weight;
+    if (!group.cwdsSeen.has(cwd)) {
+      group.cwdsSeen.add(cwd);
+      group.weight += weight;
     }
-    if (!group.allowedRepo && isAllowed(candidate.repoId)) {
-      group.allowedRepo = candidate;
+    for (const { repoId, remote } of resolved.repos) {
+      const candidate = { repoId, remote, cwd, weight, gitRoot: resolved.gitRoot };
+      candidates.push(candidate);
+      group.firstRepo ??= candidate;
+      if (!group.allowedRepo && isAllowed(repoId)) group.allowedRepo = candidate;
     }
   }
   const groups = [...rootGroups.values()];
+  const candidatesSeen = [...new Set(candidates.map((candidate) => candidate.repoId))];
 
   // Deny wins: in denylist mode, an explicitly denied repo forces a skip.
   const denylistMode = isAllowed(null);
   if (denylistMode) {
     const denied = candidates.find((candidate) => !isAllowed(candidate.repoId));
     if (denied) {
-      return { repoId: denied.repoId, cwd: denied.cwd, allowed: false, candidatesSeen };
+      return {
+        repoId: denied.repoId,
+        cwd: denied.cwd,
+        allowed: false,
+        candidatesSeen,
+        skipReason: { reason: "denied-repo", gitRoot: denied.gitRoot, repoId: denied.repoId },
+      };
     }
   } else {
     // Allowlist: every touched git root must resolve to an allowed repo.
     const unlisted = groups.find((group) => !group.allowedRepo);
     if (unlisted) {
-      return { repoId: unlisted.firstRepo.repoId, cwd: unlisted.firstRepo.cwd, allowed: false, candidatesSeen };
+      return {
+        repoId: unlisted.firstRepo?.repoId ?? null,
+        cwd: unlisted.cwd,
+        allowed: false,
+        candidatesSeen,
+        skipReason: { reason: unlisted.firstRepo ? "unlisted-root" : "unresolved-root", gitRoot: unlisted.gitRoot },
+      };
     }
   }
 
@@ -188,7 +222,13 @@ export async function resolveUploadTarget(
 
   if (candidates.length === 0) {
     // No git repo found in any directory -> unknown-repo handling.
-    return { repoId: null, cwd: defaultCwd, allowed: isAllowed(null), candidatesSeen };
+    return {
+      repoId: null,
+      cwd: defaultCwd,
+      allowed: denylistMode,
+      candidatesSeen,
+      ...(!denylistMode ? { skipReason: { reason: "no-repo" as const } } : {}),
+    };
   }
 
   // Repos were found but none are allowed.

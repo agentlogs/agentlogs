@@ -37,8 +37,10 @@ export async function locateGitRoot(start: string): Promise<string | null> {
       if (stats.isDirectory() || stats.isFile()) {
         return current;
       }
-    } catch {
-      // continue
+    } catch (error) {
+      // An unreadable .git must not disappear from capture permission checks.
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && code !== "ENOTDIR") return current;
     }
 
     if (current === root) {
@@ -58,13 +60,30 @@ export interface GitRemote {
   url: string;
 }
 
+async function resolveGitDirectory(repoRoot: string): Promise<string> {
+  const gitPath = path.join(repoRoot, ".git");
+  if (!(await fs.stat(gitPath)).isFile()) return gitPath;
+  const pointer = (await fs.readFile(gitPath, "utf8")).trim().match(/^gitdir:\s*(.+)$/);
+  if (!pointer) throw new Error("Invalid .git directory pointer");
+  return path.resolve(repoRoot, pointer[1]);
+}
+
 /**
- * Read every remote (name + url) from .git/config.
+ * Read every remote from the repository's shared config, including linked worktrees.
  * Remotes are returned with "origin" first (when present), then in file order.
  */
 export async function readGitRemotes(repoRoot: string): Promise<GitRemote[]> {
   try {
-    const configPath = path.join(repoRoot, ".git", "config");
+    const gitDirectory = await resolveGitDirectory(repoRoot);
+    let configDirectory = gitDirectory;
+    try {
+      const commonDirectory = (await fs.readFile(path.join(gitDirectory, "commondir"), "utf8")).trim();
+      if (!commonDirectory) return [];
+      configDirectory = path.resolve(gitDirectory, commonDirectory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    const configPath = path.join(configDirectory, "config");
     const configContent = await fs.readFile(configPath, "utf8");
 
     const remotes: GitRemote[] = [];
@@ -167,13 +186,12 @@ export async function getRepoId(cwd?: string): Promise<string | null> {
  */
 export async function readGitBranch(repoRoot: string, fallback?: string): Promise<string | null> {
   try {
-    const headPath = path.join(repoRoot, ".git", "HEAD");
+    const headPath = path.join(await resolveGitDirectory(repoRoot), "HEAD");
     const headContent = await fs.readFile(headPath, "utf8");
     const trimmed = headContent.trim();
     if (trimmed.startsWith("ref:")) {
       const ref = trimmed.slice(4).trim();
-      const parts = ref.split("/");
-      return parts[parts.length - 1] ?? fallback ?? null;
+      return ref.replace(/^refs\/heads\//, "") || fallback || null;
     }
     return trimmed || fallback || null;
   } catch {

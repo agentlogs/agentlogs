@@ -2,11 +2,19 @@ import { createHash } from "crypto";
 import { promises as fs } from "fs";
 import { homedir } from "os";
 import { basename, extname, join, relative, resolve } from "path";
-import { fetchTranscriptMetadata, getRepoMetadata } from "@agentlogs/shared";
+import { fetchTranscriptMetadata } from "@agentlogs/shared";
 import { convertClaudeCodeTranscript, resolveGitContext } from "@agentlogs/shared/claudecode";
 import { LiteLLMPricingFetcher } from "@agentlogs/shared/pricing";
 import { getAuthenticatedEnvironments, type Environment } from "../../config";
-import { performUpload, prepareUnifiedTranscriptForUpload } from "../../lib/perform-upload";
+import {
+  extractCwdCandidatesFromRecords,
+  extractGitBranchFromRecords,
+  performUpload,
+  prepareUnifiedTranscriptForUpload,
+  skipMessageLines,
+  stampResolvedRepoId,
+} from "../../lib/perform-upload";
+import { resolveUploadTarget } from "../../lib/repo-resolution";
 
 interface LocalTranscriptInfo {
   transcriptId: string;
@@ -194,12 +202,23 @@ async function discoverLocalTranscripts(projectsRoot: string): Promise<LocalTran
 
       try {
         const raw = await fs.readFile(filePath, "utf8");
-        const cwd = extractCwdFromTranscript(raw);
-        const repoId = await resolveRepoIdFromCwd(cwd);
-
-        // Parse records and convert to unified format for sha256 computation
+        // Use the same permission and attribution rules as the upload, so repo
+        // filters and comparison hashes describe the payload sent to the server.
         const records = parseTranscriptRecords(raw);
-        const gitBranch = extractGitBranchFromRecords(records);
+        const candidates = extractCwdCandidatesFromRecords(records);
+        const fallbackCwd = process.cwd();
+        const target = await resolveUploadTarget(
+          candidates.length ? candidates : [{ cwd: fallbackCwd, weight: 1 }],
+          candidates[0]?.cwd ?? fallbackCwd,
+        );
+        if (!target.allowed) {
+          process.stdout.write(
+            `${filePath}: ${skipMessageLines(target.candidatesSeen, target.skipReason).join("\n")}\n`,
+          );
+          continue;
+        }
+        const { cwd, repoId } = target;
+        const gitBranch = extractGitBranchFromRecords(records, cwd);
         const gitContext = cwd ? await resolveGitContext(cwd, gitBranch) : null;
 
         const conversionResult = convertClaudeCodeTranscript(records, {
@@ -213,7 +232,9 @@ async function discoverLocalTranscripts(projectsRoot: string): Promise<LocalTran
         }
 
         // Compute sha256 from the prepared upload transcript so local/remote comparisons stay aligned
-        const preparedTranscript = prepareUnifiedTranscriptForUpload(conversionResult.transcript);
+        const preparedTranscript = prepareUnifiedTranscriptForUpload(
+          stampResolvedRepoId(conversionResult.transcript, repoId),
+        );
         const unifiedJson = JSON.stringify(preparedTranscript);
         const sha256 = createHash("sha256").update(unifiedJson).digest("hex");
 
@@ -264,51 +285,4 @@ function parseTranscriptRecords(rawTranscript: string): Record<string, unknown>[
   }
 
   return records;
-}
-
-function extractCwdFromTranscript(rawTranscript: string): string | null {
-  const lines = rawTranscript.split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
-    }
-
-    try {
-      const record = JSON.parse(trimmed) as Record<string, unknown>;
-      const cwd = record?.cwd;
-      if (typeof cwd === "string" && cwd.length > 0) {
-        return cwd;
-      }
-    } catch {
-      continue;
-    }
-  }
-  return null;
-}
-
-function extractGitBranchFromRecords(records: Record<string, unknown>[]): string | undefined {
-  for (const record of records) {
-    const gitBranch = typeof record.gitBranch === "string" ? record.gitBranch.trim() : "";
-    if (gitBranch) {
-      return gitBranch;
-    }
-  }
-  return undefined;
-}
-
-async function resolveRepoIdFromCwd(cwd: string | null): Promise<string | null> {
-  if (!cwd) {
-    return null;
-  }
-
-  if (!(await isDirectory(cwd))) {
-    return null;
-  }
-
-  try {
-    return getRepoMetadata(cwd).repoId;
-  } catch {
-    return null;
-  }
 }
