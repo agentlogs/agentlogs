@@ -30,7 +30,7 @@
       },
       {
         "group": "Agents",
-        "pages": ["agents/claude-code", "agents/codex", "agents/opencode", "agents/pi"]
+        "pages": ["agents/claude-code", "agents/codex", "agents/opencode", "agents/openclaw", "agents/pi"]
       },
       {
         "group": "CLI",

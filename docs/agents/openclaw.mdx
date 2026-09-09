@@ -1,0 +1,67 @@
+---
+title: OpenClaw
+description: Upload OpenClaw conversations from legacy JSONL sessions and v2 SQLite stores
+icon: lobster
+---
+
+# OpenClaw Integration
+
+AgentLogs supports manual uploads of OpenClaw conversations, including user prompts, assistant text, thinking, tool calls and results, file edits, and token usage.
+
+## Upload a Session
+
+Authenticate and allow capture for your repository first:
+
+```bash
+npx agentlogs login agentlogs.ai
+cd /path/to/your/repository
+npx agentlogs allow
+```
+
+Then select an OpenClaw conversation:
+
+```bash
+# Interactive picker
+npx agentlogs upload --source openclaw
+
+# Most recently updated session
+npx agentlogs upload --source openclaw --latest
+
+# Exact session ID from the picker
+npx agentlogs openclaw upload <sessionId>
+
+# Legacy JSONL or exported transcript
+npx agentlogs openclaw upload /path/to/session.jsonl
+```
+
+The session must record a working directory so AgentLogs can check repository capture permissions. Uploads use the normal secret and sensitive-file redaction pipeline.
+
+## Supported Storage
+
+- **Legacy OpenClaw:** per-agent JSONL under `~/.openclaw/agents/<agentId>/sessions/`. When `sessions.json` exists, its session IDs and file paths determine the current sessions. Branch ancestry in JSONL selects the active conversation.
+- **OpenClaw v2:** per-agent `~/.openclaw/agents/<agentId>/agent/openclaw-agent.sqlite`. Verified with OpenClaw 2026.9.3, database schema 19. AgentLogs opens the database read-only and imports each current session window's active events. Abandoned branches and previous reset windows are excluded.
+- **Backups:** flat JSONL files in `~/.openclaw/session-backups/` remain supported.
+
+SQLite imports require **Node.js 22.13+ or Bun 1.3.10+**. Legacy JSONL imports work with the usual CLI runtime requirements. No running OpenClaw gateway is required.
+
+For a custom state directory or an OpenClaw profile:
+
+```bash
+OPENCLAW_STATE_DIR=/path/to/openclaw-state npx agentlogs upload --source openclaw
+```
+
+To scan only a directory of JSONL exports:
+
+```bash
+OPENCLAW_SESSIONS=/path/to/exports npx agentlogs upload --source openclaw
+```
+
+The JSONL override is exclusive and does not scan other device sessions. Custom agent database locations outside the standard state layout require a JSONL export.
+
+## Tool Rendering and Limitations
+
+OpenClaw's native `exec`, `read`, `write`, and `edit` tools use AgentLogs' shell, file, and diff viewers. The Codex harness's `bash` and structured `apply_patch` changes are also supported. Other tools retain their names and text results in a generic viewer. Usage is attributed to each recorded model, including reasoning and cached-token totals when available.
+
+Malformed records are skipped with a warning during upload. Embedded images and other binary attachments are not imported yet. Automatic upload hooks and commit tracking are not included.
+
+For self-hosted installations, deploy a server version accepting the `openclaw` source before updating the CLI.

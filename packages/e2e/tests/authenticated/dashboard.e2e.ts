@@ -16,7 +16,7 @@ test.describe.serial("Dashboard", () => {
     const userMenuTrigger = page.locator('[data-slot="dropdown-menu-trigger"]');
     await expect(userMenuTrigger).toBeVisible();
     // Verify the "Logs" nav link is visible (only shows when authenticated)
-    await expect(page.getByRole("link", { name: "Logs" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Logs", exact: true })).toBeVisible();
   });
 
   test("displays empty state when no repos or transcripts", async ({ page }) => {
@@ -105,11 +105,12 @@ test.describe.serial("Infinite Scroll", () => {
     // Wait for transcript to load
     await expect(page.getByText(`Test transcript ${id}`)).toBeVisible();
 
-    // Scroll to bottom
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-
-    // Should show an end-of-list quote (check for the em-dash author attribution pattern)
-    await expect(page.getByText(/—\s+\w+/)).toBeVisible({ timeout: 5000 });
+    // Other upload tests share this user's feed. Keep scrolling as each page
+    // arrives instead of assuming all transcripts fit in one response.
+    await expect(async () => {
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await expect(page.getByText(/—\s+\w+/)).toBeVisible({ timeout: 1000 });
+    }).toPass({ timeout: 15000 });
   });
 });
 
@@ -146,7 +147,7 @@ test.describe.serial("Navigation", () => {
     await expect(userMenuTrigger).toBeVisible();
 
     // Verify the authenticated nav is showing (Logs link only appears when logged in)
-    await expect(page.getByRole("link", { name: "Logs" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Logs", exact: true })).toBeVisible();
 
     // Note: Dropdown interaction test is skipped due to @base-ui/react compatibility
     // issues with Playwright. The dropdown functionality is verified manually.
