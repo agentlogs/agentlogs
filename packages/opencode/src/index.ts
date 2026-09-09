@@ -11,6 +11,14 @@
 
 import { appendFileSync } from "node:fs";
 import { spawn } from "node:child_process";
+import {
+  CliCommand,
+  enqueueHook,
+  markIdleUploadFinished,
+  markIdleUploadStarted,
+  resolveCli,
+  shouldRunIdleUpload,
+} from "./lib/hooks";
 
 // ============================================================================
 // Debug Logging (compiled out in production builds)
@@ -58,6 +66,20 @@ interface HookResponse {
 }
 
 // ============================================================================
+// CLI Resolution (resolved once, cached for the lifetime of the plugin)
+// ============================================================================
+
+let resolvedCli: CliCommand | null = null;
+
+function getCli(): CliCommand {
+  if (!resolvedCli) {
+    resolvedCli = resolveCli();
+    log("Resolved CLI", resolvedCli);
+  }
+  return resolvedCli;
+}
+
+// ============================================================================
 // CLI Integration
 // ============================================================================
 
@@ -66,24 +88,13 @@ interface HookResponse {
  * Passes hook data via stdin, receives response via stdout.
  */
 async function runHook(payload: HookPayload, cwd: string): Promise<HookResponse> {
-  const cliPath = process.env.VI_CLI_PATH;
+  const { command, args } = getCli();
+  const runArgs = [...args, "opencode", "hook"];
 
-  let command: string;
-  let args: string[];
-
-  if (cliPath) {
-    const parts = cliPath.split(" ");
-    command = parts[0];
-    args = [...parts.slice(1), "opencode", "hook"];
-  } else {
-    command = "npx";
-    args = ["-y", "agentlogs@latest", "opencode", "hook"];
-  }
-
-  log("Running hook", { command, args, payload: payload.hook_event_name });
+  log("Running hook", { command, args: runArgs, payload: payload.hook_event_name });
 
   return new Promise((resolve) => {
-    const proc = spawn(command, args, {
+    const proc = spawn(command, runArgs, {
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -129,6 +140,9 @@ async function runHook(payload: HookPayload, cwd: string): Promise<HookResponse>
 // ============================================================================
 
 export const agentLogsPlugin = async (ctx: PluginContext) => {
+  // Resolve the CLI invocation once up front (cached for the plugin lifetime).
+  getCli();
+
   log("Plugin initialized", {
     directory: ctx.directory,
     projectId: ctx.project?.id,
@@ -150,17 +164,30 @@ export const agentLogsPlugin = async (ctx: PluginContext) => {
         const sessionId = properties?.sessionID;
         if (!sessionId) return;
 
+        // Throttle: opencode may emit session.idle repeatedly (even within the
+        // same millisecond). Each event used to spawn a fresh CLI process, so
+        // skip when this session is already uploading or uploaded recently.
+        if (!shouldRunIdleUpload(sessionId)) {
+          return;
+        }
+
+        markIdleUploadStarted(sessionId);
         log("session.idle", { sessionId });
 
-        // Fire and forget - CLI handles the upload
-        runHook(
-          {
-            hook_event_name: "session.idle",
-            session_id: sessionId,
-            cwd: ctx.directory,
-          },
-          ctx.directory,
-        ).catch((err) => log("session.idle hook error", { error: String(err) }));
+        // Fire and forget - CLI handles the upload. Serialized so bursts of
+        // session.idle events don't spawn concurrent CLI processes.
+        enqueueHook(() =>
+          runHook(
+            {
+              hook_event_name: "session.idle",
+              session_id: sessionId,
+              cwd: ctx.directory,
+            },
+            ctx.directory,
+          )
+            .catch((err) => log("session.idle hook error", { error: String(err) }))
+            .finally(() => markIdleUploadFinished(sessionId)),
+        );
       }
     },
 
@@ -231,18 +258,21 @@ export const agentLogsPlugin = async (ctx: PluginContext) => {
       // Clean up tracked callId
       interceptedCallIds.delete(input.callID);
 
-      // Fire and forget - CLI handles commit tracking
-      runHook(
-        {
-          hook_event_name: "tool.execute.after",
-          session_id: input.sessionID,
-          call_id: input.callID,
-          tool: input.tool,
-          tool_output: output,
-          cwd: ctx.directory,
-        },
-        ctx.directory,
-      ).catch((err) => log("tool.execute.after hook error", { error: String(err) }));
+      // Fire and forget - CLI handles commit tracking. Serialized to avoid
+      // concurrent CLI spawns (npm's install lock can't handle parallel runs).
+      enqueueHook(() =>
+        runHook(
+          {
+            hook_event_name: "tool.execute.after",
+            session_id: input.sessionID,
+            call_id: input.callID,
+            tool: input.tool,
+            tool_output: output,
+            cwd: ctx.directory,
+          },
+          ctx.directory,
+        ).catch((err) => log("tool.execute.after hook error", { error: String(err) })),
+      );
     },
   };
 };
