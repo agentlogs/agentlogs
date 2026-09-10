@@ -37,7 +37,7 @@ function log(message: string, data?: unknown): void {
 // Types
 // ============================================================================
 
-interface PluginContext {
+export interface PluginContext {
   directory: string;
   worktree?: string;
   project?: { id: string; path: string };
