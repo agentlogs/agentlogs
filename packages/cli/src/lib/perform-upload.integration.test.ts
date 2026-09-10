@@ -214,6 +214,8 @@ describe("upload permission and attribution through command entry points", () =>
     function git(args: string[]) {
       const result = Bun.spawnSync(["git", "-c", "core.fsmonitor=false", "-c", "commit.gpgsign=false", ...args], {
         cwd: f.root,
+        // Git hooks export repository variables that must not reach this fixture.
+        env: { PATH: process.env.PATH },
       });
       expect({ code: result.exitCode, stderr: result.stderr.toString() }).toMatchObject({ code: 0 });
     }
