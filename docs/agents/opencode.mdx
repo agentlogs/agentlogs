@@ -44,6 +44,12 @@ The plugin is lightweight and shells out to the AgentLogs CLI for all processing
 
 When a session becomes idle, the plugin triggers the CLI to upload the transcript. Transcripts are automatically deduplicated server-side based on session ID.
 
+Repeated idle events are combined into one upload per session per minute. If another turn finishes during that minute or while an upload is running, the plugin schedules a final update while OpenCode remains open. Closing the session's OpenCode instance cancels pending updates; use a manual upload if needed afterward.
+
+Uploads and commit hooks share a queue within each OpenCode process. A CLI run that exceeds one minute is stopped, including its child processes, so later hooks can continue.
+
+The CLI command is resolved once per OpenCode process: `VI_CLI_PATH` takes precedence for local development, followed by an installed `agentlogs` executable on `PATH`, then `npx -y agentlogs@latest` as a fallback. Restart OpenCode after changing the CLI installation or override.
+
 ### Git Commit Enhancement
 
 When a git commit is detected:

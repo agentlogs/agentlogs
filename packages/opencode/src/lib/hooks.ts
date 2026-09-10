@@ -11,11 +11,7 @@ import { spawnSync } from "node:child_process";
 // Configuration
 // ============================================================================
 
-// Minimum time between session.idle transcript uploads for the same session.
-// opencode can emit session.idle repeatedly (bursts of events within the same
-// millisecond), and every event used to spawn a fresh `npx` CLI that installs
-// agentlogs from the npm registry. Throttling collapses bursts into a single
-// upload and bounds upload frequency to at most once per interval.
+// Coalesce repeated idle events while retaining the last update in each interval.
 export const IDLE_UPLOAD_MIN_INTERVAL_MS = 60_000;
 
 // ============================================================================
@@ -69,45 +65,94 @@ function detectBinaryOnPath(name: string): string | undefined {
 // Hook Scheduling
 // ============================================================================
 
-// Serializes fire-and-forget hook runs so we never spawn concurrent CLI
-// processes. Concurrent `npx` invocations contend on npm's install lock and
-// fail with ECOMPROMISED while burning CPU; serializing prevents that pile-up.
-export function enqueueHook<T>(task: () => Promise<T>): Promise<T> {
-  const result = hookQueue.then(task, task);
-  hookQueue = result.then(
-    () => undefined,
-    () => undefined,
-  );
-  return result;
+export function createHookQueue() {
+  let queue: Promise<unknown> = Promise.resolve();
+  return <T>(task: () => Promise<T>): Promise<T> => {
+    const result = queue.then(task);
+    queue = result.catch(() => undefined);
+    return result;
+  };
 }
 
-let hookQueue: Promise<unknown> = Promise.resolve();
+export interface Clock {
+  now(): number;
+  setTimeout(callback: () => void, delay: number): ReturnType<typeof setTimeout>;
+  clearTimeout(timer: ReturnType<typeof setTimeout>): void;
+}
 
-// Throttle state for session.idle uploads, keyed by session ID.
-const lastIdleUpload = new Map<string, number>();
-const idleUploadsInFlight = new Set<string>();
+const systemClock: Clock = {
+  now: () => Date.now(),
+  setTimeout: (callback, delay) => {
+    const timer = setTimeout(callback, delay);
+    timer.unref();
+    return timer;
+  },
+  clearTimeout: (timer) => clearTimeout(timer),
+};
 
-/**
- * Whether a session.idle upload should run for the given session.
- * Skips when an upload is already in flight or ran within the interval.
- */
-export function shouldRunIdleUpload(
-  sessionId: string,
-  now = Date.now(),
+interface IdleUpload {
+  pending?: () => Promise<unknown>;
+  queued: boolean;
+  lastStarted: number;
+  timer?: ReturnType<typeof setTimeout>;
+}
+
+export function createIdleUploadScheduler(
+  enqueue: ReturnType<typeof createHookQueue>,
+  clock: Clock = systemClock,
   minIntervalMs = IDLE_UPLOAD_MIN_INTERVAL_MS,
-): boolean {
-  if (idleUploadsInFlight.has(sessionId)) {
-    return false;
+) {
+  const sessions = new Map<string, IdleUpload>();
+  let disposed = false;
+
+  function wake(sessionId: string, state: IdleUpload) {
+    if (disposed || state.queued) return;
+    const delay = state.lastStarted + minIntervalMs - clock.now();
+    if (delay > 0) {
+      state.timer ??= clock.setTimeout(() => {
+        state.timer = undefined;
+        wake(sessionId, state);
+      }, delay);
+      return;
+    }
+    if (!state.pending) {
+      sessions.delete(sessionId);
+      return;
+    }
+
+    state.queued = true;
+    const finished = () => {
+      state.queued = false;
+      wake(sessionId, state);
+    };
+    // Consume the latest request only when the job starts. Requests received
+    // during execution remain pending for a trailing upload after completion.
+    void enqueue(async () => {
+      if (disposed) return;
+      const task = state.pending;
+      state.pending = undefined;
+      state.lastStarted = clock.now();
+      await task?.();
+    }).then(finished, finished);
   }
-  const last = lastIdleUpload.get(sessionId) ?? 0;
-  return now - last >= minIntervalMs;
-}
 
-export function markIdleUploadStarted(sessionId: string, now = Date.now()): void {
-  lastIdleUpload.set(sessionId, now);
-  idleUploadsInFlight.add(sessionId);
-}
-
-export function markIdleUploadFinished(sessionId: string): void {
-  idleUploadsInFlight.delete(sessionId);
+  return {
+    schedule(sessionId: string, task: () => Promise<unknown>) {
+      if (disposed) return;
+      let state = sessions.get(sessionId);
+      if (!state) {
+        state = { queued: false, lastStarted: -Infinity };
+        sessions.set(sessionId, state);
+      }
+      state.pending = task;
+      wake(sessionId, state);
+    },
+    dispose() {
+      disposed = true;
+      for (const state of sessions.values()) {
+        if (state.timer) clock.clearTimeout(state.timer);
+      }
+      sessions.clear();
+    },
+  };
 }
