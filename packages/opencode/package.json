@@ -1,6 +1,6 @@
 {
   "name": "@agentlogs/opencode",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "AgentLogs plugin for OpenCode - automatically captures and uploads AI coding session transcripts",
   "keywords": [
     "agentlogs",
