@@ -29,6 +29,9 @@
     "prepublishOnly": "bun run build",
     "check": "tsgo --project tsconfig.json"
   },
+  "devDependencies": {
+    "@opencode/plugin": "^2.0.11"
+  },
   "peerDependencies": {
     "bun": ">=1.0.0"
   }

@@ -21,20 +21,33 @@ bun add -g @agentlogs/opencode
 
 ### Configure OpenCode
 
+The plugin ships both entrypoints in one package:
+
+- **OpenCode 2** loads the default export's `setup(ctx)` (hooks + event subscription).
+- **OpenCode 1** (1.18.29+) calls the default export's `server()` function.
+
 Add the plugin to your `opencode.json` config file:
 
-```json
+```jsonc
+// OpenCode 2
 {
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@agentlogs/opencode"]
+  "plugins": ["@agentlogs/opencode"],
+}
+```
+
+```jsonc
+// OpenCode 1
+{
+  "plugin": ["@agentlogs/opencode"],
 }
 ```
 
 Or for local development:
 
-```json
+```jsonc
 {
-  "plugin": [".opencode/plugin/agentlogs.ts"]
+  // OpenCode 2
+  "plugins": [".opencode/plugins/agentlogs"],
 }
 ```
 
@@ -63,20 +76,11 @@ Alternative variable names are also supported:
 
 ### Transcript Capture
 
-The plugin listens to OpenCode events and maintains a record of the current session:
+The plugin captures transcripts and enhances git commits:
 
-1. **`session.created`**: Initializes tracking for a new session
-2. **`message.updated`**: Collects messages as they're added/updated
-3. **`session.idle`**: Uploads the complete transcript when the session becomes idle
-
-### Git Commit Enhancement
-
-When you make a git commit during a session, the plugin:
-
-1. Intercepts the `tool.execute.before` event for shell commands
-2. Detects git commit commands
-3. Uploads the current transcript (if not already uploaded)
-4. Appends a transcript link to the commit message
+1. **`session.idle`**: Uploads the complete transcript when the session becomes idle (coalesced into one upload per quiet period)
+2. **`tool.execute.before`**: Intercepts shell/tool git commit commands so the CLI can append a transcript link
+3. **`tool.execute.after`**: Reports completed commits so the CLI tracks them against the transcript
 
 Example enhanced commit:
 
@@ -86,50 +90,16 @@ feat: add user authentication
 Transcript: https://agentlogs.ai/app/logs/abc123
 ```
 
-## Plugin Events
+## Plugin API
 
-The plugin responds to these OpenCode events:
+The package's default export is the plugin definition:
 
-| Event             | Action                     |
-| ----------------- | -------------------------- |
-| `session.created` | Start tracking new session |
-| `session.updated` | Update session metadata    |
-| `message.updated` | Collect message content    |
-| `session.idle`    | Upload transcript          |
-| `session.deleted` | Clear session state        |
+- **OpenCode 2**: `default.setup(ctx)` - registers `ctx.tool.hook("execute.before" | "execute.after")`, subscribes to `ctx.event.subscribe` for `session.idle`, and reads the project directory from `ctx.location.directory`.
+- **OpenCode 1**: `default.server(input)` - returns the v1 hooks object (`event`, `tool.execute.before`, `tool.execute.after`, `dispose`).
 
-## API
+Both entrypoints delegate to the same shared core (serialized CLI queue, idle upload coalescing, CLI resolution), and each hook payload carries the OpenCode version so the CLI knows which transcript export path to use.
 
-### Exports
-
-```typescript
-import {
-  agentLogsPlugin, // Main plugin function
-  extractGitContext, // Extract git repo/branch info
-  isGitCommitCommand, // Check if command is git commit
-  uploadOpenCodeTranscript, // Manual transcript upload
-  buildTranscriptUrl, // Build transcript URL from ID
-} from "@agentlogs/opencode";
-```
-
-### Manual Upload
-
-You can also upload transcripts programmatically:
-
-```typescript
-import { uploadOpenCodeTranscript } from "@agentlogs/opencode";
-
-const result = await uploadOpenCodeTranscript({
-  session: { id: "...", createdAt: "...", ... },
-  messages: [...],
-  gitContext: { repo: "...", branch: "...", relativeCwd: "..." },
-  cwd: "/path/to/project",
-});
-
-if (result.success) {
-  console.log(`Transcript: ${result.transcriptUrl}`);
-}
-```
+All transcript fetching and upload logic lives in the `agentlogs` CLI (`agentlogs opencode hook`), which this plugin launches on demand.
 
 ## Troubleshooting
 

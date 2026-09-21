@@ -22,6 +22,7 @@ export {
   type OpenCodeSessionInfo,
   type OpenCodeToolState,
 } from "./opencode";
+export { mapOpenCodeV2Export, type OpenCodeV2Export } from "./opencode";
 export {
   convertOpenClawTranscript,
   parseOpenClawRecords,

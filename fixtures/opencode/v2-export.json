@@ -1,0 +1,123 @@
+{
+  "info": {
+    "id": "ses_v2fixture0000000000000001",
+    "projectID": "d9ae69f8eb6cc9ed3ed6e0dd64a0a8091c75958d",
+    "agent": "build",
+    "model": { "id": "deepseek-v4-flash", "providerID": "opencode", "variant": "default" },
+    "cost": 0.006842391,
+    "tokens": {
+      "input": 12780,
+      "output": 1841,
+      "reasoning": 512,
+      "cache": { "read": 4096, "write": 512 }
+    },
+    "time": { "created": 1789948117000, "updated": 1789948122000 },
+    "title": "Migrate the agentlogs plugin to OpenCode 2",
+    "location": { "directory": "/home/dev/agentlogs" }
+  },
+  "messages": [
+    {
+      "id": "msg_v2fixture0000000000000002",
+      "metadata": { "instruction": { "paths": ["/home/dev/agentlogs/AGENTS.md"] } },
+      "time": { "created": 1789948117200 },
+      "text": "Instructions from: /home/dev/agentlogs/AGENTS.md\n## Documentation\n\n- Docs are in `docs/` using Mintlify\n\n## Tooling\n\n- Use Bun 1.3.10\n- Type checking uses `tsgo`",
+      "type": "synthetic"
+    },
+    {
+      "id": "msg_v2fixture0000000000000003",
+      "time": { "created": 1789948117300 },
+      "text": "Migrate the agentlogs opencode plugin so it loads under OpenCode 2.",
+      "type": "user"
+    },
+    {
+      "id": "msg_v2fixture0000000000000004",
+      "time": { "created": 1789948117400, "streamed": 1789948117450, "completed": 1789948117500 },
+      "type": "assistant",
+      "agent": "build",
+      "model": { "id": "deepseek-v4-flash", "providerID": "opencode", "variant": "default" },
+      "content": [
+        {
+          "type": "reasoning",
+          "text": "The plugin entrypoint still uses the V1 function-plugin API.",
+          "time": { "created": 1789948117410, "completed": 1789948117430 }
+        },
+        {
+          "type": "tool",
+          "id": "call_1206c296a2c94e249e4ae287",
+          "name": "read",
+          "executed": true,
+          "state": {
+            "status": "completed",
+            "input": { "path": "/home/dev/agentlogs" },
+            "content": [
+              {
+                "type": "text",
+                "text": "Read directory /home/dev/agentlogs, entries 1-20\n.git\npackages\nsrc\nAGENTS.md"
+              }
+            ],
+            "metadata": { "truncated": false }
+          },
+          "time": { "created": 1789948117450, "ran": 1789948117500, "completed": 1789948117520 }
+        },
+        {
+          "type": "tool",
+          "id": "call_8392b75089d7468bbc4f3aec",
+          "name": "shell",
+          "executed": true,
+          "state": {
+            "status": "completed",
+            "input": { "command": "cd /home/dev/agentlogs && git status" },
+            "content": [
+              {
+                "type": "text",
+                "text": "On branch main\nYour branch is up to date with 'origin/main'.\n\nnothing to commit, working tree clean"
+              },
+              { "type": "text", "text": "Command exited with code 0." }
+            ],
+            "metadata": { "status": "completed", "truncated": false, "exit": 0 }
+          },
+          "time": { "created": 1789948117550, "ran": 1789948117600, "completed": 1789948117620 }
+        },
+        {
+          "type": "tool",
+          "id": "call_45f5f0aabbccddeeff001122",
+          "name": "grep",
+          "executed": true,
+          "state": {
+            "status": "error",
+            "input": { "pattern": "Plugin.define", "path": "/home/dev/agentlogs" },
+            "error": { "message": "No matches found", "type": "tool.error" },
+            "metadata": {}
+          },
+          "time": { "created": 1789948117650, "ran": 1789948117680, "completed": 1789948117690 }
+        }
+      ],
+      "finish": "tool-calls",
+      "cost": 0.00123,
+      "tokens": { "input": 8421, "output": 310, "reasoning": 44, "cache": { "read": 2048, "write": 0 } }
+    },
+    {
+      "id": "msg_v2fixture0000000000000005",
+      "time": { "created": 1789948117800, "streamed": 1789948117850, "completed": 1789948117900 },
+      "type": "assistant",
+      "agent": "build",
+      "model": { "id": "deepseek-v4-flash", "providerID": "opencode", "variant": "default" },
+      "content": [
+        {
+          "type": "text",
+          "text": "I ported the plugin to `Plugin.define` with `ctx.tool.hook` and `ctx.event.subscribe`."
+        }
+      ],
+      "finish": "stop",
+      "cost": 0.000412,
+      "tokens": { "input": 4359, "output": 421, "reasoning": 0, "cache": { "read": 2048, "write": 0 } }
+    },
+    {
+      "id": "msg_v2fixture0000000000000006",
+      "time": { "created": 1789948118000 },
+      "type": "model-switched",
+      "model": { "id": "claude-sonnet-4-5", "providerID": "anthropic" },
+      "previous": { "id": "deepseek-v4-flash", "providerID": "opencode" }
+    }
+  ]
+}

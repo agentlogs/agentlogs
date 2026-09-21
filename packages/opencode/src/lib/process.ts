@@ -11,6 +11,8 @@ export interface HookPayload {
   cwd?: string;
   tool_input?: Record<string, unknown>;
   tool_output?: Record<string, unknown>;
+  /** OpenCode generation that issued the hook; the CLI selects the export path from this. */
+  opencode_version?: "1" | "2";
 }
 
 export interface HookResponse {

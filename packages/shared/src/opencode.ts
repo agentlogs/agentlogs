@@ -169,6 +169,122 @@ export type ConvertOpenCodeOptions = {
 };
 
 // ============================================================================
+// OpenCode V2 Export Types (OpenCode 2 server API, `SessionTransfer.Data`)
+// ============================================================================
+// OpenCode 2 replaced the `opencode export` CLI subcommand with the HTTP
+// endpoint `GET /api/experimental/session/{sessionID}/export`. Its payload
+// schema differs from the legacy export, so we normalize it into the legacy
+// `OpenCodeExport` shape before conversion.
+
+export type OpenCodeV2Export = {
+  info: OpenCodeV2SessionInfo;
+  messages: OpenCodeV2Message[];
+};
+
+export type OpenCodeV2TokenUsage = {
+  input?: number;
+  output?: number;
+  reasoning?: number;
+  cache?: {
+    read?: number;
+    write?: number;
+  };
+};
+
+export type OpenCodeV2SessionInfo = {
+  id: string;
+  parentID?: string;
+  projectID?: string;
+  agent?: string;
+  model?: OpenCodeV2ModelRef;
+  cost?: number;
+  tokens?: OpenCodeV2TokenUsage;
+  time: {
+    created: number;
+    updated?: number;
+  };
+  title?: string;
+  location?: {
+    directory?: string;
+  };
+  metadata?: Record<string, unknown>;
+};
+
+export type OpenCodeV2ModelRef = {
+  id?: string;
+  providerID?: string;
+  variant?: string;
+};
+
+export type OpenCodeV2ToolContent =
+  | { type: "text"; text?: string }
+  | { type: "file"; uri?: string; mime?: string; name?: string };
+
+export type OpenCodeV2ToolState = {
+  status?: "streaming" | "running" | "completed" | "error";
+  input?: unknown;
+  content?: OpenCodeV2ToolContent[];
+  metadata?: Record<string, unknown>;
+  error?: unknown;
+};
+
+export type OpenCodeV2AssistantPart =
+  | { type: "text"; text?: string }
+  | {
+      type: "reasoning";
+      text?: string;
+      metadata?: unknown;
+      time?: { created?: number; completed?: number };
+    }
+  | {
+      type: "tool";
+      id?: string;
+      name?: string;
+      executed?: boolean;
+      state?: OpenCodeV2ToolState;
+      time?: { created?: number; ran?: number; completed?: number };
+    };
+
+export type OpenCodeV2UserMessage = {
+  type: "user";
+  id: string;
+  time: { created: number };
+  text?: string;
+  files?: unknown[];
+  agents?: unknown[];
+  skills?: unknown[];
+  metadata?: Record<string, unknown>;
+};
+
+export type OpenCodeV2AssistantMessage = {
+  type: "assistant";
+  id: string;
+  time: { created: number; completed?: number; streamed?: number };
+  agent?: string;
+  model?: OpenCodeV2ModelRef;
+  content: OpenCodeV2AssistantPart[];
+  finish?: string;
+  cost?: number;
+  tokens?: OpenCodeV2TokenUsage;
+  metadata?: Record<string, unknown>;
+};
+
+// Synthetic/system/control messages and any future message kinds. The type
+// discriminant excludes the handled variants so that `type === "assistant"`
+// (etc.) narrows to the concrete shapes instead of this fallback (whose index
+// signature would otherwise swallow the known tags).
+export type OpenCodeV2MessageType = "user" | "assistant";
+export type OpenCodeV2OtherMessage = {
+  type: Exclude<string, OpenCodeV2MessageType>;
+  id?: string;
+  time?: { created: number };
+  text?: string;
+  [key: string]: unknown;
+};
+
+export type OpenCodeV2Message = OpenCodeV2UserMessage | OpenCodeV2AssistantMessage | OpenCodeV2OtherMessage;
+
+// ============================================================================
 // Tool Name Mapping
 // ============================================================================
 
@@ -422,6 +538,177 @@ export function convertOpenCodeTranscript(
   });
 
   return transcript;
+}
+
+// ============================================================================
+// V2 Export Normalization
+// ============================================================================
+
+/**
+ * Map an OpenCode 2 session export (`SessionTransfer.Data`) to the legacy
+ * `OpenCodeExport` shape consumed by {@link convertOpenCodeTranscript}.
+ *
+ * OpenCode 2 messages use tagged unions instead of { info, parts }: user
+ * messages carry their text directly, assistant messages embed tool calls in
+ * `content`, and tool results live in tool `state`. Control and synthetic
+ * messages (instructions, agent/model switches, compaction, shell records)
+ * are not part of the transcript and are dropped.
+ */
+export function mapOpenCodeV2Export(data: OpenCodeV2Export): OpenCodeExport {
+  const info: OpenCodeSessionInfo = {
+    id: data.info.id,
+    parentID: data.info.parentID,
+    title: data.info.title,
+    directory: data.info.location?.directory,
+    time: {
+      created: data.info.time?.created ?? Date.now(),
+      updated: data.info.time?.updated,
+    },
+  };
+
+  const messages: OpenCodeMessage[] = [];
+  for (const message of data.messages ?? []) {
+    const mapped = mapOpenCodeV2Message(message, data.info.id);
+    if (mapped) messages.push(mapped);
+  }
+
+  return { info, messages };
+}
+
+function mapOpenCodeV2Message(message: OpenCodeV2Message, sessionID: string): OpenCodeMessage | null {
+  if (message.type === "user") {
+    const user = message as OpenCodeV2UserMessage;
+    const text = user.text?.trim();
+    if (!text) return null;
+    return {
+      info: {
+        id: user.id,
+        sessionID,
+        role: "user",
+        time: { created: user.time?.created ?? 0 },
+      },
+      parts: [{ type: "text", text }],
+    };
+  }
+
+  if (message.type === "assistant") {
+    const assistant = message as OpenCodeV2AssistantMessage;
+    const parts: OpenCodePart[] = [];
+    for (const part of assistant.content ?? []) {
+      const mapped = mapOpenCodeV2AssistantPart(part);
+      if (mapped) parts.push(mapped);
+    }
+    if (parts.length === 0) return null;
+
+    return {
+      info: {
+        id: assistant.id,
+        sessionID,
+        role: "assistant",
+        time: { created: assistant.time?.created ?? 0, completed: assistant.time?.completed },
+        modelID: assistant.model?.id,
+        providerID: assistant.model?.providerID,
+        model: {
+          providerID: assistant.model?.providerID,
+          modelID: assistant.model?.id,
+        },
+        cost: assistant.cost,
+        tokens: assistant.tokens
+          ? {
+              input: assistant.tokens.input ?? 0,
+              output: assistant.tokens.output ?? 0,
+              reasoning: assistant.tokens.reasoning,
+              cache: assistant.tokens.cache
+                ? {
+                    read: assistant.tokens.cache.read ?? 0,
+                    write: assistant.tokens.cache.write ?? 0,
+                  }
+                : undefined,
+            }
+          : undefined,
+        finish: assistant.finish,
+      },
+      parts,
+    };
+  }
+
+  // Synthetic, system, and control message kinds carry no transcript content
+  // (AGENTS.md instructions, model/agent switches, compaction records, etc.).
+  // Dropping them prevents system noise from polluting previews and timelines.
+  return null;
+}
+
+function mapOpenCodeV2AssistantPart(part: OpenCodeV2AssistantPart): OpenCodePart | null {
+  if (part.type === "text") {
+    const text = part.text?.trim();
+    if (!text) return null;
+    return { type: "text", text };
+  }
+
+  if (part.type === "reasoning") {
+    const text = part.text?.trim();
+    if (!text) return null;
+    return { type: "reasoning", text };
+  }
+
+  if (part.type === "tool") {
+    const state = part.state ?? {};
+    const toolName = part.name ?? "unknown";
+    const output = v2ContentToString(state.content);
+    const metadata: OpenCodeToolState["metadata"] = state.metadata ? { ...state.metadata } : {};
+
+    // OpenCode 2's shell tool stores the command output in `state.content`
+    // text parts. The unified Bash sanitization reads it from
+    // metadata.output, so mirror it there (exit is already in metadata).
+    if (isBashToolName(toolName) && output) {
+      metadata.output = output;
+    }
+
+    const normalizedState: OpenCodeToolState = {
+      status: state.status === "error" ? "error" : state.status === "completed" ? "completed" : undefined,
+      input: state.input,
+      output: output || undefined,
+      error: state.error === undefined ? undefined : extractErrorMessage(state.error),
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+      time: part.time
+        ? {
+            start: part.time.created,
+            end: part.time.completed,
+          }
+        : undefined,
+    };
+
+    return {
+      type: "tool",
+      callID: part.id ?? "",
+      tool: toolName,
+      state: normalizedState,
+    };
+  }
+
+  return null;
+}
+
+function v2ContentToString(content: OpenCodeV2ToolContent[] | undefined): string {
+  if (!content) return "";
+  return content
+    .filter((part): part is { type: "text"; text?: string } => part.type === "text")
+    .map((part) => part.text ?? "")
+    .join("\n");
+}
+
+function extractErrorMessage(error: unknown): string {
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object" && "message" in error) {
+    const { message } = error as { message?: unknown };
+    if (typeof message === "string") return message;
+  }
+  return "Tool failed";
+}
+
+function isBashToolName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower === "bash" || lower === "shell" || lower === "execute";
 }
 
 // ============================================================================

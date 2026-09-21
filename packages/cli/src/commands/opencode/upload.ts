@@ -1,8 +1,8 @@
 import { readFileSync, unlinkSync, openSync, closeSync } from "fs";
 import * as os from "os";
 import spawn from "cross-spawn";
-import type { OpenCodeExport } from "@agentlogs/shared";
-import { convertOpenCodeTranscript } from "@agentlogs/shared/opencode";
+import type { OpenCodeExport, OpenCodeV2Export } from "@agentlogs/shared";
+import { convertOpenCodeTranscript, mapOpenCodeV2Export } from "@agentlogs/shared/opencode";
 import { LiteLLMPricingFetcher } from "@agentlogs/shared/pricing";
 import { resolveGitContext } from "@agentlogs/shared/claudecode";
 import { skipMessageLines, uploadUnifiedToAllEnvs } from "../../lib/perform-upload";
@@ -14,8 +14,12 @@ interface SessionReadResult {
 }
 
 /**
- * Read a session using OpenCode's export command.
- * This abstracts away the storage backend (JSON files or SQLite).
+ * Read a session using OpenCode's export mechanisms.
+ *
+ * OpenCode 1 exposes `opencode export <sessionID>`. OpenCode 2 removed the
+ * subcommand; the server exposes the session transfer through
+ * `opencode api get /api/experimental/session/{id}/export`, so the v1 path is
+ * attempted first and falls back to the v2 HTTP export API.
  *
  * Uses spawn with stdout redirected to a file descriptor to bypass the ~256KB
  * pipe buffer truncation bug that occurs when both stdout and stderr are piped.
@@ -24,6 +28,16 @@ interface SessionReadResult {
  * @see https://github.com/oven-sh/bun/issues/28145
  */
 export async function readSessionFromExport(sessionId: string): Promise<SessionReadResult> {
+  const legacy = await runOpenCodeExport(sessionId, ["export", sessionId]);
+  if (legacy.success) return legacy;
+  return runOpenCodeExport(sessionId, ["api", "get", `/api/experimental/session/${sessionId}/export`], { v2: true });
+}
+
+async function runOpenCodeExport(
+  sessionId: string,
+  args: string[],
+  options: { v2?: boolean } = {},
+): Promise<SessionReadResult> {
   const tmpFile = `${os.tmpdir()}/agentlogs-oc-${process.pid}-${Date.now()}.json`;
   let exitCode = 0;
   let stderr = "";
@@ -31,7 +45,7 @@ export async function readSessionFromExport(sessionId: string): Promise<SessionR
   const fd = openSync(tmpFile, "w");
 
   try {
-    const proc = spawn("opencode", ["export", sessionId], {
+    const proc = spawn("opencode", args, {
       stdio: ["pipe", fd, "pipe"],
     });
 
@@ -70,6 +84,14 @@ export async function readSessionFromExport(sessionId: string): Promise<SessionR
   }
 
   try {
+    if (options.v2) {
+      const envelope = JSON.parse(content) as { data?: OpenCodeV2Export };
+      if (!envelope.data) {
+        return { success: false, error: "missing data" };
+      }
+      return { success: true, data: mapOpenCodeV2Export(envelope.data) };
+    }
+
     const data = JSON.parse(content) as OpenCodeExport;
     return { success: true, data };
   } catch {

@@ -1,5 +1,4 @@
 import { createAgentLogsPlugin } from "./lib/plugin";
 
-// OpenCode treats each distinct entrypoint export as a plugin instance.
-export const agentLogsPlugin = createAgentLogsPlugin();
-export default agentLogsPlugin;
+// OpenCode 2 loads the default export as the plugin definition.
+export default createAgentLogsPlugin().plugin;

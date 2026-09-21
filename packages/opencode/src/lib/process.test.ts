@@ -70,7 +70,7 @@ describe("hook subprocesses", () => {
       const pidFile = join(cwd, "child.pid");
       const completed: string[] = [];
       let childPid = 0;
-      const plugin = await createAgentLogsPlugin({
+      const agent = createAgentLogsPlugin({
         run: async (payload, directory) => {
           if (payload.session_id === "hang") payload.tool_input = { pidFile };
           if (completed.length > 0) expect(running(childPid)).toBe(false);
@@ -83,18 +83,28 @@ describe("hook subprocesses", () => {
           completed.push(payload.hook_event_name);
           return response;
         },
-      })({ directory: cwd });
+      });
+      const plugin = agent.handlers(cwd);
 
       try {
-        await plugin.event({ type: "session.idle", properties: { sessionID: "hang" } });
-        await plugin.event({ type: "session.idle", properties: { sessionID: "ok" } });
-        await plugin["tool.execute.after"](
-          { tool: "bash", sessionID: "ok", callID: "after" },
-          { title: "commit", output: "https://agentlogs.ai/s/test", metadata: {} },
-        );
-        const output = { args: { command: 'git commit -m "Test"' } };
-        await plugin["tool.execute.before"]({ tool: "bash", sessionID: "ok", callID: "before" }, output);
-        expect(output.args.command).toBe("updated");
+        plugin.scheduleIdle("hang");
+        plugin.scheduleIdle("ok");
+        await plugin.after({
+          tool: "bash",
+          sessionID: "ok",
+          id: "after",
+          status: "completed",
+          input: { command: 'git commit -m "Test"' },
+          result: { content: "https://agentlogs.ai/s/test", metadata: {} },
+        });
+        const event = {
+          tool: "bash",
+          sessionID: "ok",
+          id: "before",
+          input: { command: 'git commit -m "Test"' },
+        };
+        await plugin.before(event);
+        expect((event.input as { command: string }).command).toBe("updated");
         expect(completed).toEqual(["session.idle", "session.idle", "tool.execute.after", "tool.execute.before"]);
       } finally {
         await plugin.dispose();

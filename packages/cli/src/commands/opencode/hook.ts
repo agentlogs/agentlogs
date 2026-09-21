@@ -8,8 +8,8 @@
 import { readFileSync, unlinkSync, openSync, closeSync } from "fs";
 import * as os from "os";
 import spawn from "cross-spawn";
-import type { OpenCodeExport } from "@agentlogs/shared";
-import { convertOpenCodeTranscript } from "@agentlogs/shared/opencode";
+import type { OpenCodeExport, OpenCodeV2Export } from "@agentlogs/shared";
+import { convertOpenCodeTranscript, mapOpenCodeV2Export } from "@agentlogs/shared/opencode";
 import { LiteLLMPricingFetcher } from "@agentlogs/shared/pricing";
 import { resolveGitContext } from "@agentlogs/shared/claudecode";
 import { uploadUnifiedToAllEnvs } from "../../lib/perform-upload";
@@ -35,12 +35,19 @@ import {
 // Types
 // ============================================================================
 
+// Bash tool id across OpenCode versions: "bash" (v1), "shell" (v2).
+const BASH_TOOLS = new Set(["bash", "shell", "execute"]);
+
 interface OpenCodeHookInput {
   hook_event_name: "tool.execute.before" | "tool.execute.after" | "session.idle";
   session_id: string;
   call_id?: string;
   tool?: string;
   cwd?: string;
+  // Which OpenCode generation issued the hook ("1" = opencode export,
+  // "2" = the v2 session export API). Absent on legacy plugin payloads, which
+  // default to the v1 export command.
+  opencode_version?: "1" | "2";
   // For tool.execute.before
   tool_input?: {
     command?: string;
@@ -160,13 +167,11 @@ async function handleToolExecuteBefore(hookInput: OpenCodeHookInput): Promise<vo
   const command = typeof toolInput.command === "string" ? toolInput.command : "";
   const cwd = hookInput.cwd;
 
-  const isBashTool = tool === "bash";
-
   // Check if repo is allowed
   const repoId = await getRepoIdFromCwd(cwd);
   const repoAllowed = isRepoAllowed(repoId);
 
-  if (isBashTool && containsGitCommit(command) && repoAllowed && shouldAddTranscriptLinkToCommit(repoId)) {
+  if (BASH_TOOLS.has(tool) && containsGitCommit(command) && repoAllowed && shouldAddTranscriptLinkToCommit(repoId)) {
     // Generate stable transcript ID
     const transcriptId = await getOrCreateTranscriptId(sessionId);
 
@@ -188,7 +193,7 @@ async function handleToolExecuteBefore(hookInput: OpenCodeHookInput): Promise<vo
       }
 
       // Upload partial transcript immediately so the link works
-      await uploadPartialTranscript(sessionId, cwd);
+      await uploadPartialTranscript(sessionId, cwd, hookInput.opencode_version);
 
       // Return modified args
       outputResponse({
@@ -212,7 +217,7 @@ async function handleToolExecuteAfter(hookInput: OpenCodeHookInput): Promise<voi
   const toolOutput = hookInput.tool_output || {};
   const cwd = hookInput.cwd || "";
 
-  const isBashTool = tool === "bash";
+  const isBashTool = BASH_TOOLS.has(tool);
   if (!isBashTool) {
     return;
   }
@@ -280,7 +285,7 @@ async function handleSessionIdle(hookInput: OpenCodeHookInput): Promise<void> {
     sessionId: sessionId.substring(0, 8),
   });
 
-  await uploadFullTranscript(sessionId, cwd);
+  await uploadFullTranscript(sessionId, cwd, hookInput.opencode_version);
 }
 
 // ============================================================================
@@ -293,7 +298,26 @@ interface ExportResult {
   error?: string;
 }
 
-async function readSessionFromExport(sessionId: string): Promise<ExportResult> {
+async function readSessionFromExport(sessionId: string, version?: "1" | "2"): Promise<ExportResult> {
+  // The plugin already knows which OpenCode generation issued the hook, so the
+  // export path is chosen explicitly instead of probing the binary:
+  // - OpenCode 1: `opencode export <sessionID>` produces the legacy export.
+  // - OpenCode 2: the subcommand was removed; the server exposes the export at
+  //   `GET /api/experimental/session/{id}/export` via `opencode api get`.
+  if (version === "2") {
+    return runOpenCodeCommand(sessionId, ["api", "get", `/api/experimental/session/${sessionId}/export`], {
+      v2: true,
+    });
+  }
+  // v1 and legacy plugin payloads (no opencode_version tag).
+  return runOpenCodeCommand(sessionId, ["export", sessionId]);
+}
+
+async function runOpenCodeCommand(
+  sessionId: string,
+  args: string[],
+  options: { v2?: boolean } = {},
+): Promise<ExportResult> {
   const tmpFile = `${os.tmpdir()}/agentlogs-oc-${process.pid}-${Date.now()}.json`;
   let exitCode = 0;
   let stderr = "";
@@ -301,7 +325,7 @@ async function readSessionFromExport(sessionId: string): Promise<ExportResult> {
   const fd = openSync(tmpFile, "w");
 
   try {
-    const proc = spawn("opencode", ["export", sessionId], {
+    const proc = spawn("opencode", args, {
       stdio: ["pipe", fd, "pipe"],
     });
 
@@ -353,6 +377,14 @@ async function readSessionFromExport(sessionId: string): Promise<ExportResult> {
   }
 
   try {
+    if (options.v2) {
+      const envelope = JSON.parse(content) as { data?: OpenCodeV2Export };
+      if (!envelope.data) {
+        return { success: false, error: "missing data" };
+      }
+      return { success: true, data: mapOpenCodeV2Export(envelope.data) };
+    }
+
     const data = JSON.parse(content) as OpenCodeExport;
     return { success: true, data };
   } catch (err) {
@@ -369,8 +401,8 @@ async function readSessionFromExport(sessionId: string): Promise<ExportResult> {
   }
 }
 
-async function uploadPartialTranscript(sessionId: string, cwd?: string): Promise<void> {
-  const result = await readSessionFromExport(sessionId);
+async function uploadPartialTranscript(sessionId: string, cwd?: string, version?: "1" | "2"): Promise<void> {
+  const result = await readSessionFromExport(sessionId, version);
   if (!result.success) {
     logger.warn("OpenCode partial upload: session not found", {
       sessionId: sessionId.substring(0, 8),
@@ -383,8 +415,8 @@ async function uploadPartialTranscript(sessionId: string, cwd?: string): Promise
   await doUpload(exportData, sessionId, cwd, "partial");
 }
 
-async function uploadFullTranscript(sessionId: string, cwd?: string): Promise<void> {
-  const result = await readSessionFromExport(sessionId);
+async function uploadFullTranscript(sessionId: string, cwd?: string, version?: "1" | "2"): Promise<void> {
+  const result = await readSessionFromExport(sessionId, version);
   if (!result.success) {
     logger.warn("OpenCode full upload: session not found", {
       sessionId: sessionId.substring(0, 8),
