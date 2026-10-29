@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # Builder stage compiles the app for the target container architecture.
-FROM --platform=$BUILDPLATFORM oven/bun:1.3.10 AS build
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.4 AS build
 ARG TARGETARCH
 WORKDIR /app
 
