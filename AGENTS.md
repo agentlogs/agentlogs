@@ -5,7 +5,7 @@
 
 ## Setup & Tooling
 
-- Use Bun 1.3.10: install deps with `bun install` from the repo root.
+- Use Bun 1.4.4: install deps with `bun install` from the repo root.
 - Workspace-aware commands run from root; prefer `bun run --filter <path> <script>` for package-specific scripts.
 - Type checking uses `tsgo`; formatting uses `oxfmt`; linting uses `oxlint`.
 
